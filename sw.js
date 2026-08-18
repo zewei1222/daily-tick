@@ -3,7 +3,7 @@
    不使用 skipWaiting() / clients.claim()；新內容由 fetch 階段寫進同一份快取，
    下次載入即生效，並在本次瀏覽中以提示條告知。 */
 
-var CACHE_VERSION = 'v3';
+var CACHE_VERSION = 'v4';
 var BASE = '/daily-tick/';
 var CACHE = 'daily-tick-' + CACHE_VERSION;
 
@@ -60,6 +60,7 @@ self.addEventListener('fetch', function (e) {
   var url = new URL(req.url);
   if (url.origin !== self.location.origin) return;      /* GitHub API 等交給網路 */
   if (!url.pathname.startsWith(BASE)) return;
+  if (url.searchParams.has('live')) return;             /* 版本探測：一律走網路，不攔 */
 
   var key = req.mode === 'navigate' ? new Request(INDEX) : req;
 
@@ -104,11 +105,38 @@ function revalidate(cache, key) {
   }).catch(function () { /* 離線：安靜略過 */ });
 }
 
-var notified = false;
+/* 記下背景更新過的檔案。用集合而不是一次性旗標：
+   訊息可能在頁面掛上監聽之前就發出去，頁面之後還要能主動問。 */
+var updatedUrls = [];
+
 function notify(url) {
-  if (notified) return;
-  notified = true;
+  if (updatedUrls.indexOf(url) < 0) updatedUrls.push(url);
   self.clients.matchAll({ type: 'window' }).then(function (list) {
     list.forEach(function (c) { c.postMessage({ type: 'asset-updated', url: url }); });
   });
 }
+
+/* 把 app shell 全部重抓一次寫回目前的快取，讓重新載入後拿到的是一致的新版 */
+function refreshShell() {
+  return caches.open(CACHE).then(function (cache) {
+    return Promise.all(SHELL.map(function (u) {
+      return fetch(bust(u)).then(function (res) {
+        if (res && res.ok) return cache.put(new Request(u), res);
+      }).catch(function () {});
+    }));
+  }).then(function () { updatedUrls = []; });
+}
+
+self.addEventListener('message', function (e) {
+  var data = e.data || {};
+  var reply = function (msg) {
+    if (e.source) e.source.postMessage(msg);
+    else if (e.ports && e.ports[0]) e.ports[0].postMessage(msg);
+  };
+  if (data.type === 'check') {
+    reply({ type: 'sw-state', version: CACHE_VERSION, updated: updatedUrls.length > 0 });
+    if (updatedUrls.length) reply({ type: 'asset-updated', url: updatedUrls[0] });
+  } else if (data.type === 'refresh') {
+    e.waitUntil(refreshShell().then(function () { reply({ type: 'refreshed' }); }));
+  }
+});

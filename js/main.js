@@ -218,7 +218,8 @@
     A.$('#ta-export').value = JSON.stringify(A.state, null, 2);
     A.$('#ta-import').value = '';
     renderDeletedList();
-    A.$('#about-line').textContent = 'schema v' + A.SCHEMA_VERSION +
+    A.$('#about-line').textContent = '版本 ' + (A.version || '?') +
+      ' ・ schema v' + A.SCHEMA_VERSION +
       (A.sync.gistId() ? ' ・ gist ' + A.sync.gistId().slice(0, 8) : '');
     renderSyncStatus();
   }
@@ -459,14 +460,63 @@
     if (window.scrollY || window.scrollX) window.scrollTo(0, 0);
   }
 
+  /* ================= 版本與更新提示 =================
+     不只依賴 Service Worker 的訊息：訊息可能在頁面掛上監聽之前就發出去，
+     所以（一）監聽在啟動時就掛好，（二）載入後主動問 SW，
+     （三）另外用一個帶 live 參數、不被 SW 攔截的請求去比對線上版本。 */
+  var APP_VERSION = (function () {
+    var m = document.querySelector('meta[name="app-version"]');
+    return m ? m.content : '';
+  })();
+  A.version = APP_VERSION;
+
+  var barShown = false;
+  function showUpdateBar() {
+    if (barShown) return;
+    barShown = true;
+    A.$('#update-bar').hidden = false;
+  }
+  A.showUpdateBar = showUpdateBar;
+
+  function onSwMessage(e) {
+    if (e.data && e.data.type === 'asset-updated') showUpdateBar();
+  }
+
+  /* 直接問線上的 index.html 版本號（?live=1 不會被 SW 攔） */
+  function pollVersion() {
+    if (!APP_VERSION) return;
+    fetch(BASE + 'index.html?live=1&t=' + Date.now(), { cache: 'no-store' })
+      .then(function (r) { return r.ok ? r.text() : null; })
+      .then(function (html) {
+        if (!html) return;
+        var m = html.match(/name="app-version"\s+content="([^"]+)"/);
+        if (m && m[1] !== APP_VERSION) showUpdateBar();
+      })
+      .catch(function () { /* 離線：安靜略過 */ });
+  }
+  A.pollVersion = pollVersion;
+
+  function reloadWithFreshCache() {
+    var done = false;
+    var go = function () { if (!done) { done = true; location.reload(); } };
+    var sw = navigator.serviceWorker && navigator.serviceWorker.controller;
+    if (!sw) { go(); return; }
+    var onMsg = function (e) { if (e.data && e.data.type === 'refreshed') go(); };
+    navigator.serviceWorker.addEventListener('message', onMsg);
+    sw.postMessage({ type: 'refresh' });     /* 先把快取換成新版，再重載 */
+    setTimeout(go, 2500);                    /* 逾時就直接重載 */
+  }
+
   /* ================= Service Worker ================= */
   function registerSW() {
     if (!('serviceWorker' in navigator)) return;
     navigator.serviceWorker.register(BASE + 'sw.js', { scope: BASE })
       .catch(function (e) { console.warn('SW 註冊失敗', e); });
-    navigator.serviceWorker.addEventListener('message', function (e) {
-      if (e.data && e.data.type === 'asset-updated') A.$('#update-bar').hidden = false;
-    });
+    /* 主動問一次：補上「訊息比監聽早發出」的漏接 */
+    if (navigator.serviceWorker.controller) {
+      navigator.serviceWorker.controller.postMessage({ type: 'check' });
+    }
+    setTimeout(pollVersion, 2500);
   }
 
   /* ================= 事件接線 ================= */
@@ -577,7 +627,7 @@
     });
 
     /* 更新提示 */
-    A.$('#btn-reload').addEventListener('click', function () { location.reload(); });
+    A.$('#btn-reload').addEventListener('click', reloadWithFreshCache);
 
     /* 手勢 */
     ['daily', 'general'].forEach(function (type) {
@@ -610,6 +660,7 @@
       if (A.mode === 'edit') setMode('normal');   /* 編輯模式不記憶 */
       checkDate();
       A.sync.retryIfPending();
+      pollVersion();
     });
     window.addEventListener('focus', checkDate);
     window.addEventListener('pageshow', checkDate);
@@ -628,6 +679,11 @@
   /* ================= 啟動 ================= */
   function boot() {
     A.render.init();
+
+    /* 這一行必須在最前面：SW 的更新通知可能比 load 事件更早到 */
+    if ('serviceWorker' in navigator) {
+      navigator.serviceWorker.addEventListener('message', onSwMessage);
+    }
 
     /* 階段一：同步讀 mirror，立刻畫出完整清單 */
     ui = A.readUiState();

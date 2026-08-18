@@ -22,9 +22,15 @@
 **換 repo 名稱或帳號時**，要一起改：`index.html`（5 處連結）、`manifest.json`（`start_url`、`scope`）、
 `js/main.js` 的 `BASE`、`sw.js` 的 `BASE`。前綴不一致會導致 scope 不符、加入主畫面後離線啟動失敗。
 
-改完 code 推上去後，從主畫面開啟會先看到舊版（cache-first），SW 在背景比對到內容有變就會出現
-「有新版本」提示條，點一下重新載入即為新版；不需要刪掉主畫面圖示重加。要強制更新可以改 `sw.js`
-的 `CACHE_VERSION`。
+改完 code 推上去後，從主畫面開啟會先看到舊版（cache-first）。App 用兩條路偵測新版：
+Service Worker 在背景比對快取內容，另外每次啟動與回到前景時會用 `?live=1`（SW 不攔）直接抓線上
+`index.html` 比對 `<meta name="app-version">`。任一條發現不同就顯示「有新版本」提示條；點「重新載入」
+會先讓 SW 把 app shell 全部換成新版再 reload，拿到的一定是一致的新版本。
+
+**發版守則：每次改動都要把 `index.html` 的 `app-version` 與 `sw.js` 的 `CACHE_VERSION` 一起 +1**
+（兩者必須同號，測試會檢查）。忘了改版本號，使用者就不會收到更新提示。
+
+設定頁最下方會顯示目前執行中的版本號，用來確認裝置上跑的是哪一版。
 
 ## 備份設定
 

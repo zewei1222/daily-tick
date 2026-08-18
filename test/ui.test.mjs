@@ -810,6 +810,70 @@ group('F7 / F8 PAT 錯誤處理');
 }
 
 /* ================================================================= */
+group('版本與更新提示（I4）');
+{
+  /* 版本標記與 SW 快取版本必須同號，否則會出現「提示了卻拿到舊檔」 */
+  const fs = await import('node:fs');
+  const repo = import.meta.dirname + '/..';        /* 注意：URL 這個名字在本檔被字串佔用 */
+  const html = fs.readFileSync(repo + '/index.html', 'utf8');
+  const sw = fs.readFileSync(repo + '/sw.js', 'utf8');
+  const metaV = (html.match(/name="app-version"\s+content="([^"]+)"/) || [])[1];
+  const cacheV = (sw.match(/CACHE_VERSION\s*=\s*'v([^']+)'/) || [])[1];
+  eq('index.html 的 app-version 與 sw.js 的 CACHE_VERSION 同號', metaV, cacheV);
+
+  const ctx = await browser.createBrowserContext();
+  const page = await newPage(ctx);
+  await page.goto(URL, { waitUntil: 'load' });
+  await page.evaluate(() => navigator.serviceWorker.ready);
+  eq('啟動時沒有更新提示', await page.$eval('#update-bar', e => e.hidden), true);
+  eq('設定頁顯示版本號', await page.evaluate(() => App.version), metaV);
+
+  /* 版本探測必須真的走到網路（若被 SW 攔就永遠看不到新版） */
+  let sawLive = false;
+  await page.setRequestInterception(true);
+  page.on('request', r => {
+    if (r.url().includes('live=1')) {
+      sawLive = true;
+      r.respond({ status: 200, contentType: 'text/html',
+                  body: '<meta name="app-version" content="999">' });
+    } else r.continue();
+  });
+  await page.evaluate(() => App.pollVersion());
+  await sleep(700);
+  ok('探測請求沒有被 Service Worker 攔截，真的到了網路', sawLive);
+  eq('偵測到新版就顯示提示條', await page.$eval('#update-bar', e => !e.hidden), true);
+  eq('提示條有重新載入按鈕', await page.$eval('#btn-reload', b => b.textContent), '重新載入');
+
+  /* 點下去要真的重新載入（頁面重建） */
+  await page.evaluate(() => { window.__beforeReload = 1; });
+  await tapEl(page, '#btn-reload');
+  await sleep(3000);
+  eq('點重新載入後頁面已重建',
+     await page.evaluate(() => typeof window.__beforeReload), 'undefined');
+  await ctx.close();
+
+  /* 版本相同時不該出現提示 */
+  const ctx2 = await browser.createBrowserContext();
+  const page2 = await newPage(ctx2);
+  await page2.goto(URL, { waitUntil: 'load' });
+  await page2.evaluate(() => navigator.serviceWorker.ready);
+  await page2.evaluate(() => App.pollVersion());
+  await sleep(800);
+  eq('版本相同 → 不顯示提示條', await page2.$eval('#update-bar', e => e.hidden), true);
+
+  /* 離線時探測失敗也不能報錯或誤報 */
+  const errsBefore = errors.length;
+  await page2.setOfflineMode(true);
+  await page2.evaluate(() => App.pollVersion());
+  await sleep(600);
+  eq('離線探測不誤報', await page2.$eval('#update-bar', e => e.hidden), true);
+  eq('離線探測不報錯', errors.filter(e => !/Failed to load|net::/.test(e)).length,
+     errors.filter((e, i) => i < errsBefore && !/Failed to load|net::/.test(e)).length);
+  await page2.setOfflineMode(false);
+  await ctx2.close();
+}
+
+/* ================================================================= */
 group('I. 版面與 tokens');
 {
   const ctx = await browser.createBrowserContext();

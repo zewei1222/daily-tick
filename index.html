@@ -5,7 +5,7 @@
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
 <title>極簡待辦</title>
 <meta name="description" content="極簡重複待辦清單">
-<meta name="theme-color" content="#ffffff">
+<meta name="theme-color" content="#000000">
 <meta name="mobile-web-app-capable" content="yes">
 <meta name="apple-mobile-web-app-capable" content="yes">
 <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
@@ -14,7 +14,7 @@
 <link rel="apple-touch-icon" href="/daily-tick/icons/icon-180.png">
 <link rel="icon" href="/daily-tick/icons/icon-192.png">
 
-<!-- 開機圖：避免 standalone 冷啟動白閃（SPEC §7.4）。
+<!-- 開機圖：避免 standalone 冷啟動閃色（SPEC §7.4）。
      目前涵蓋 iPhone 15 Pro（393x852 @3x）；新增機型只要再加一行 link。 -->
 <link rel="apple-touch-startup-image"
       media="(device-width: 393px) and (device-height: 852px) and (-webkit-device-pixel-ratio: 3) and (orientation: portrait)"
@@ -27,7 +27,7 @@
 
 <header class="app-head">
   <button class="btn-text head-l" id="btn-edit" type="button">編輯</button>
-  <h1 class="app-title" id="app-title">每日</h1>
+  <h1 class="app-title" id="app-title">日常</h1>
   <button class="btn-icon head-r" id="btn-settings" type="button" aria-label="設定">
     ⚙<span class="sync-dot" id="sync-dot" hidden></span>
   </button>
@@ -38,14 +38,14 @@
   <section class="view" id="view-daily" data-type="daily">
     <div class="view-inner">
       <ul class="list" id="list-daily"></ul>
-      <p class="empty" id="empty-daily" hidden>還沒有每日任務。<br>按右下角的 ＋ 新增。</p>
+      <p class="empty" id="empty-daily" hidden></p>
     </div>
   </section>
 
   <section class="view" id="view-general" data-type="general" hidden>
     <div class="view-inner">
       <ul class="list" id="list-general"></ul>
-      <p class="empty" id="empty-general" hidden>還沒有一般任務。<br>按右下角的 ＋ 新增。</p>
+      <p class="empty" id="empty-general" hidden></p>
       <div class="list-foot" id="foot-general" hidden>
         <button class="btn is-block" id="btn-clear-done" type="button">清除已完成</button>
       </div>
@@ -61,32 +61,71 @@
 <button class="fab" id="fab" type="button" aria-label="新增任務">＋</button>
 
 <nav class="tab-bar" role="tablist">
-  <button class="tab" role="tab" data-tab="daily" aria-selected="true" type="button">每日</button>
+  <button class="tab" role="tab" data-tab="daily" aria-selected="true" type="button">日常</button>
   <button class="tab" role="tab" data-tab="general" aria-selected="false" type="button">一般</button>
   <button class="tab" role="tab" data-tab="stats" aria-selected="false" type="button">統計</button>
 </nav>
 
 <!-- 新增 / 編輯任務 -->
 <div class="sheet is-fade" id="sheet-task" hidden role="dialog" aria-modal="true">
-  <div class="sheet-head">
-    <button class="btn-text head-l" data-act="cancel" type="button">取消</button>
-    <span class="sheet-title" id="sheet-task-title">新增任務</span>
-    <button class="btn-text head-r" data-act="save" type="button">儲存</button>
+
+  <div class="sheet-hero">
+    <div class="sheet-head">
+      <button class="btn-pill" data-act="cancel" type="button">取消</button>
+      <span class="sheet-title" id="sheet-task-title">新增日常任務</span>
+      <button class="btn-pill" data-act="save" id="btn-task-save" type="button">創建</button>
+    </div>
+    <div class="hero-body">
+      <div class="hero-field">
+        <label class="hero-label" for="input-title">標題</label>
+        <input class="input-pill" id="input-title" type="text" maxlength="80"
+               autocomplete="off" autocapitalize="sentences" enterkeyhint="next">
+      </div>
+      <div class="hero-field">
+        <label class="hero-label" for="input-note">敘述</label>
+        <textarea class="input-pill" id="input-note" rows="2" maxlength="140"
+                  autocomplete="off" autocapitalize="sentences"></textarea>
+      </div>
+    </div>
   </div>
+
   <div class="sheet-body">
     <div class="sheet-inner">
-      <div class="field">
-        <label class="label" for="input-title">任務名稱</label>
-        <input class="input" id="input-title" type="text" maxlength="80"
-               autocomplete="off" autocapitalize="sentences" enterkeyhint="done">
-      </div>
-      <div class="field" id="field-type">
-        <span class="label">類型</span>
+
+      <div class="group" id="group-type">
+        <span class="group-title">類型</span>
         <div class="seg" id="seg-type">
-          <button type="button" data-type="daily" aria-pressed="true">每日</button>
+          <button type="button" data-type="daily" aria-pressed="true">日常</button>
           <button type="button" data-type="general" aria-pressed="false">一般</button>
         </div>
       </div>
+
+      <div class="group" id="group-schedule">
+        <span class="group-title">預定日程</span>
+        <div class="group-row">
+          <span class="row-label">開始日期</span>
+          <input class="input is-date" id="input-start" type="date">
+        </div>
+        <div class="group-row">
+          <span class="row-label">重複</span>
+          <span class="row-value" id="repeat-summary">每日</span>
+        </div>
+        <div class="seg seg-block" id="seg-repeat">
+          <button type="button" data-unit="day" aria-pressed="true">每日</button>
+          <button type="button" data-unit="week" aria-pressed="false">每週</button>
+          <button type="button" data-unit="month" aria-pressed="false">每月</button>
+          <button type="button" data-unit="year" aria-pressed="false">每年</button>
+        </div>
+        <div class="group-row">
+          <span class="row-label">每</span>
+          <span class="interval-wrap">
+            <input class="input is-inline" id="input-interval" type="number"
+                   min="1" max="99" step="1" inputmode="numeric" value="1">
+            <span id="interval-unit">天</span>
+          </span>
+        </div>
+      </div>
+
     </div>
   </div>
 </div>
@@ -101,14 +140,17 @@
   <div class="sheet-body">
     <div class="sheet-inner">
 
-      <div class="field">
-        <label class="label" for="input-reset-hour">每日重置時間</label>
-        <select class="input" id="input-reset-hour"></select>
-        <p class="hint">每天到這個時間，每日任務才算換新的一天。已記錄的歷史不會因為改設定而變動。</p>
+      <div class="group">
+        <span class="group-title">每日重置時間</span>
+        <div class="group-row">
+          <span class="row-label">換日於</span>
+          <select class="input is-inline" id="input-reset-hour"></select>
+        </div>
+        <p class="hint">每天到這個時間，日常任務才算換新的一期。已記錄的歷史不會因為改設定而變動。</p>
       </div>
 
-      <div class="field">
-        <span class="label">備份狀態</span>
+      <div class="group">
+        <span class="group-title">備份</span>
         <p class="status-line">
           <span class="status-value" id="sync-status">未設定備份</span>
         </p>
@@ -118,8 +160,8 @@
         </div>
       </div>
 
-      <div class="field">
-        <label class="label" for="input-pat">GitHub PAT（scope 含 gist）</label>
+      <div class="group">
+        <span class="group-title">GitHub PAT（scope 含 gist）</span>
         <input class="input" id="input-pat" type="password" autocomplete="off"
                autocapitalize="none" spellcheck="false" placeholder="ghp_...">
         <div class="btn-row is-spaced">
@@ -129,16 +171,16 @@
         <p class="hint">Token 只存在這台裝置，不會寫進備份或匯出檔。</p>
       </div>
 
-      <div class="field">
-        <span class="label">匯出</span>
+      <div class="group">
+        <span class="group-title">匯出</span>
         <textarea class="input" id="ta-export" readonly rows="4"></textarea>
         <div class="btn-row is-spaced">
           <button class="btn" id="btn-export-copy" type="button">複製</button>
         </div>
       </div>
 
-      <div class="field">
-        <label class="label" for="ta-import">匯入（會覆蓋現有資料）</label>
+      <div class="group">
+        <label class="group-title" for="ta-import">匯入（會覆蓋現有資料）</label>
         <textarea class="input" id="ta-import" rows="4" autocapitalize="none" spellcheck="false"></textarea>
         <div class="btn-row is-spaced">
           <button class="btn is-danger" id="btn-import" type="button">匯入並覆蓋</button>

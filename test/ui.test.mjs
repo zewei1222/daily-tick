@@ -46,9 +46,10 @@ async function swipeLeft(page, sel, dist) {
   await sleep(300);
 }
 
-const addTask = (page, type, title) => page.evaluate((type, title) => {
-  const t = App.addTask(type, title); App.render.list(type, { animate: false }); App.save(); return t.id;
-}, type, title);
+const addTask = (page, type, title, fields) => page.evaluate((type, title, fields) => {
+  const t = App.addTask(type, Object.assign({ title: title }, fields || {}));
+  App.render.list(type, { animate: false }); App.save(); return t.id;
+}, type, title, fields);
 
 const titles = (page, type) => page.$$eval('#list-' + type + ' .card-title', ns => ns.map(n => n.textContent));
 
@@ -94,13 +95,13 @@ group('D. 手勢：點擊 / 左滑刪除');
   eq('D1 點勾選框即完成', await page.$eval('#list-daily .row:last-child .card',
      c => c.classList.contains('is-done')), true);
   eq('C1 已完成沉底', await titles(page, 'daily'), ['運動', '喝水']);
-  eq('B 勾選後出現連續天數 1', await page.$eval('#list-daily .row:last-child .streak',
+  eq('B 勾選後出現連續期數 1', await page.$eval('#list-daily .row:last-child .badge',
      s => s.hidden ? null : s.textContent), '1');
 
   await tapEl(page, '#list-daily .row:last-child .card-title');
   await sleep(300);
   eq('D1b 點文字取消完成', await titles(page, 'daily'), ['喝水', '運動']);
-  eq('B1 未完成不顯示數字', await page.$eval('#list-daily .row:first-child .streak',
+  eq('B1 未完成不顯示數字', await page.$eval('#list-daily .row:first-child .badge',
      s => s.hidden), true);
 
   /* D2b 快速連點 10 次（用一般任務：不會沉底，座標固定指向同一張卡） */
@@ -206,7 +207,7 @@ group('C / 編輯模式');
   await sleep(300);
   eq('D1c 開啟編輯 Modal', await page.$eval('#sheet-task', e => !e.hidden), true);
   eq('Modal 帶入原標題', await page.$eval('#input-title', i => i.value), 'a');
-  eq('編輯既有任務不顯示類型切換', await page.$eval('#field-type', e => e.hidden), true);
+  eq('編輯既有任務不顯示類型切換', await page.$eval('#group-type', e => e.hidden), true);
   await page.$eval('#input-title', i => { i.value = 'a2'; });
   await tapEl(page, '#sheet-task [data-act="save"]');
   await sleep(300);
@@ -250,7 +251,7 @@ group('C7 新增 / 一般分頁 / H 清除已完成');
   await tapEl(page, '#fab');
   await sleep(300);
   eq('FAB 開啟新增 Modal', await page.$eval('#sheet-task', e => !e.hidden), true);
-  eq('新增時可選類型', await page.$eval('#field-type', e => e.hidden), false);
+  eq('新增時可選類型', await page.$eval('#group-type', e => e.hidden), false);
   await page.$eval('#input-title', i => { i.value = '第一筆'; });
   await tapEl(page, '#sheet-task [data-act="save"]');
   await sleep(300);
@@ -315,7 +316,7 @@ group('A6 換日 / A8 reset_hour');
   eq('A6 跨日後自動變回未完成', await page.$eval('#list-daily .row:first-child .card',
      c => c.classList.contains('is-done')), false);
   eq('A6 歷史未被改寫', await page.evaluate(() => App.state.tasks[0].history), before);
-  eq('B3 昨天有完成 → streak 仍顯示 1', await page.$eval('#list-daily .row:first-child .streak',
+  eq('B3 昨天有完成 → streak 仍顯示 1', await page.$eval('#list-daily .row:first-child .badge',
      s => s.hidden ? null : s.textContent), '1');
 
   /* A8 改 reset_hour 不動歷史 */
@@ -361,13 +362,120 @@ group('G. 匯入匯出');
       schema_version: 1, updated_at: '2030-01-01T00:00:00.000Z',
       settings: { reset_hour: 5 },
       tasks: [{ id: 'i1', type: 'daily', title: '匯入的', order_index: 1000,
-                created_at: '2030-01-01T00:00:00.000Z', history: [] }]
+                created_at: '2020-01-01T00:00:00.000Z', history: [] }]
     });
   });
   await tapEl(page, '#btn-import');
   await sleep(400);
   eq('G5 匯入後資料被覆蓋', await titles(page, 'daily'), ['匯入的']);
   eq('G5 設定一併覆蓋', await page.evaluate(() => App.state.settings.reset_hour), 5);
+  await ctx.close();
+}
+
+/* ================================================================= */
+group('註釋 / 日程 / 週期（新功能）');
+{
+  const ctx = await browser.createBrowserContext();
+  const page = await newPage(ctx);
+  await page.goto(URL, { waitUntil: 'domcontentloaded' });
+
+  /* 從面板新增：標題 + 敘述 + 每週 */
+  await tapEl(page, '#fab');
+  await sleep(250);
+  eq('新增面板預設為日常任務',
+     await page.$eval('#sheet-task-title', e => e.textContent), '新增日常任務');
+  eq('日常任務顯示預定日程', await page.$eval('#group-schedule', e => e.hidden), false);
+  eq('預設週期摘要', await page.$eval('#repeat-summary', e => e.textContent), '每日');
+
+  await page.$eval('#input-title', i => { i.value = '倒垃圾'; });
+  await page.$eval('#input-note', i => { i.value = '記得先分類'; });
+  await tapEl(page, '#seg-repeat button[data-unit="week"]');
+  await sleep(80);
+  const wk = await page.evaluate(() => ({
+    summary: document.querySelector('#repeat-summary').textContent,
+    unit: document.querySelector('#interval-unit').textContent
+  }));
+  ok('切到每週後摘要含星期', /^每週[日一二三四五六]$/.test(wk.summary), wk);
+  eq('間隔單位跟著換', wk.unit, '週');
+
+  await tapEl(page, '#sheet-task [data-act="save"]');
+  await sleep(350);
+
+  const saved = await page.evaluate(() => {
+    const t = App.state.tasks[0];
+    return { title: t.title, note: t.note, unit: t.repeat.unit,
+             interval: t.repeat.interval, start: t.start_date, today: App.logicalToday() };
+  });
+  eq('標題與敘述都寫入', [saved.title, saved.note], ['倒垃圾', '記得先分類']);
+  eq('週期寫入', [saved.unit, saved.interval], ['week', 1]);
+  eq('起始日預設今天', saved.start, saved.today);
+
+  /* 敘述顯示在卡片上，字體比標題小 */
+  eq('卡片顯示敘述',
+     await page.$eval('#list-daily .card-note', n => n.hidden ? null : n.textContent), '記得先分類');
+  ok('敘述字級小於標題', await page.evaluate(() => {
+    const t = parseFloat(getComputedStyle(document.querySelector('#list-daily .card-title')).fontSize);
+    const n = parseFloat(getComputedStyle(document.querySelector('#list-daily .card-note')).fontSize);
+    return n < t;
+  }));
+
+  /* 一般模式只顯示今天到期的；編輯模式顯示全部 */
+  await addTask(page, 'daily', '下週才開始', { start_date: '2099-01-01' });
+  await sleep(150);
+  eq('未到期的不出現在一般模式', await titles(page, 'daily'), ['倒垃圾']);
+  await tapEl(page, '#btn-edit');
+  await sleep(300);
+  eq('編輯模式顯示全部', await titles(page, 'daily'), ['倒垃圾', '下週才開始']);
+  ok('編輯模式的標籤顯示週期',
+     /^每週[日一二三四五六]$/.test(await page.$eval('#list-daily .row:first-child .badge',
+       b => b.textContent)));
+  await tapEl(page, '#btn-edit');
+  await sleep(300);
+
+  /* 改成每週且今天不是到期日 → 從一般模式清單消失 */
+  await page.evaluate(() => {
+    const t = App.state.tasks.find(x => x.title === '倒垃圾');
+    App.updateTask(t.id, { title: t.title, note: t.note, unit: 'week', interval: 1,
+                           start_date: App.shiftDate(App.logicalToday(), -3) });
+    App.save(); App.render.list('daily', { animate: false });
+  });
+  await sleep(150);
+  eq('非到期日就不出現', await titles(page, 'daily'), []);
+  eq('清單空時顯示「今天沒有到期」', await page.$eval('#empty-daily',
+     e => e.hidden ? null : e.textContent), '今天沒有到期的日常任務。');
+
+  /* 一般任務不顯示日程 */
+  await tapEl(page, '#fab');
+  await sleep(250);
+  await tapEl(page, '#seg-type button[data-type="general"]');
+  await sleep(80);
+  eq('切成一般任務就隱藏日程', await page.$eval('#group-schedule', e => e.hidden), true);
+  eq('標題跟著換', await page.$eval('#sheet-task-title', e => e.textContent), '新增一般任務');
+  await page.$eval('#input-title', i => { i.value = '一般的'; });
+  await page.$eval('#input-note', i => { i.value = '也有敘述'; });
+  await tapEl(page, '#sheet-task [data-act="save"]');
+  await sleep(350);
+  eq('一般任務也存得下敘述',
+     await page.evaluate(() => App.state.tasks.find(t => t.title === '一般的').note), '也有敘述');
+  ok('一般任務沒有週期欄位',
+     await page.evaluate(() => App.state.tasks.find(t => t.title === '一般的').repeat === undefined));
+
+  /* 統計：週期與三態格子 */
+  await tapEl(page, '.tab[data-tab="stats"]');
+  await sleep(250);
+  const stats = await page.evaluate(() => ({
+    meta: Array.from(document.querySelectorAll('.stat-item')[0].querySelectorAll('.stat-meta span'))
+            .map(s => s.textContent),
+    note: document.querySelector('.stat-note') ? document.querySelector('.stat-note').textContent : null,
+    cells: document.querySelectorAll('.stat-item:first-child .cell').length,
+    done: document.querySelectorAll('.stat-item:first-child .cell.is-done').length,
+    missed: document.querySelectorAll('.stat-item:first-child .cell.is-missed').length
+  }));
+  ok('統計顯示週期', /^每週[日一二三四五六]$/.test(stats.meta[0]), stats.meta);
+  ok('連續單位為「期」', stats.meta[1].indexOf('期') > 0, stats.meta);
+  eq('統計顯示敘述', stats.note, '記得先分類');
+  eq('30 格', stats.cells, 30);
+  ok('到期未完成有標出來', stats.missed > 0 && stats.missed < 30, stats);
   await ctx.close();
 }
 
@@ -446,13 +554,42 @@ group('I. 版面與 tokens');
   ok('I1 FAB 不壓在 Tab 上', layout.fabOverTab, layout);
   eq('I3 內容區可捲動', await page.$eval('#view-daily',
      v => getComputedStyle(v).overflowY), 'auto');
-  eq('無半透明遮罩：sheet 背景為實色',
-     await page.$eval('#sheet-task', s => getComputedStyle(s).backgroundColor), 'rgb(255, 255, 255)');
+  eq('全局背景為純黑', await page.$eval('body', b => getComputedStyle(b).backgroundColor),
+     'rgb(0, 0, 0)');
+  eq('卡片為高對比深色，無透明度', await page.$eval('#list-daily .card',
+     c => getComputedStyle(c).backgroundColor), 'rgb(28, 28, 30)');
+  eq('無半透明遮罩：sheet 背景為實色純黑',
+     await page.$eval('#sheet-task', s => getComputedStyle(s).backgroundColor), 'rgb(0, 0, 0)');
+  eq('模態主色塊為純色深紫', await page.$eval('.sheet-hero',
+     h => getComputedStyle(h).backgroundColor), 'rgb(94, 53, 177)');
+  eq('膠囊輸入框為強調紫底黑字', await page.$eval('#input-title', i => {
+    const cs = getComputedStyle(i);
+    return [cs.backgroundColor, cs.color, cs.borderTopWidth];
+  }), ['rgb(158, 123, 255)', 'rgb(0, 0, 0)', '0px']);
   ok('I6 卡片無模糊陰影', await page.$eval('#list-daily .card',
      c => getComputedStyle(c).boxShadow === 'none'));
+  eq('全介面無任何邊框', await page.evaluate(() => {
+    const bad = [];
+    document.querySelectorAll('*').forEach(el => {
+      const cs = getComputedStyle(el);
+      ['Top', 'Right', 'Bottom', 'Left'].forEach(side => {
+        if (parseFloat(cs['border' + side + 'Width']) > 0 &&
+            cs['border' + side + 'Style'] !== 'none') bad.push(el.className || el.tagName);
+      });
+    });
+    return bad.slice(0, 5);
+  }), []);
+  ok('無 rgba 透明色出現在實際樣式上', await page.evaluate(() => {
+    const els = Array.from(document.querySelectorAll('*'));
+    return els.every(el => {
+      const cs = getComputedStyle(el);
+      return !/rgba\((?!0, 0, 0, 0\))/.test(cs.backgroundColor + cs.color);
+    });
+  }));
   ok('I5 tokens 有定義主要變數', await page.evaluate(() => {
     const cs = getComputedStyle(document.documentElement);
-    return ['--c-ink', '--bw', '--r-card', '--dur-mid', '--swipe-action-w']
+    return ['--c-bg', '--c-modal', '--c-surface', '--c-accent', '--c-ink-2',
+            '--r-lg', '--r-md', '--r-pill', '--dur-mid', '--swipe-action-w']
       .every(k => cs.getPropertyValue(k).trim() !== '');
   }));
   await ctx.close();

@@ -78,7 +78,7 @@ const setPat = (page, pat) => page.evaluate(pat => {
   document.querySelector('#btn-pat-save').click();
 }, pat);
 const add = (page, title) => page.evaluate(t => {
-  App.addTask('daily', t); App.render.list('daily', { animate: false }); App.save();
+  App.addTask('daily', { title: t }); App.render.list('daily', { animate: false }); App.save();
 }, title);
 const titles = page => page.$$eval('#list-daily .card-title', ns => ns.map(n => n.textContent));
 const status = page => page.$eval('#sync-status', e => e.textContent);

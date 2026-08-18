@@ -44,6 +44,39 @@
     return d.getFullYear() + '-' + pad2(d.getMonth() + 1) + '-' + pad2(d.getDate());
   };
 
+  A.dateParts = function (s) {
+    var p = s.split('-');
+    return [Number(p[0]), Number(p[1]), Number(p[2])];
+  };
+
+  /* 用 UTC 當基準算天數差，避免日光節約時間造成 ±1 天誤差 */
+  A.daysBetween = function (a, b) {
+    var pa = A.dateParts(a), pb = A.dateParts(b);
+    var ta = Date.UTC(pa[0], pa[1] - 1, pa[2]);
+    var tb = Date.UTC(pb[0], pb[1] - 1, pb[2]);
+    return Math.round((tb - ta) / 86400000);
+  };
+
+  A.monthsBetween = function (a, b) {
+    var pa = A.dateParts(a), pb = A.dateParts(b);
+    return (pb[0] - pa[0]) * 12 + (pb[1] - pa[1]);
+  };
+
+  A.lastDayOfMonth = function (year, month) {
+    return new Date(year, month, 0).getDate();
+  };
+
+  A.makeDate = function (year, month, day) {
+    return year + '-' + pad2(month) + '-' + pad2(day);
+  };
+
+  A.weekdayOf = function (dateStr) {
+    var p = A.dateParts(dateStr);
+    return new Date(p[0], p[1] - 1, p[2]).getDay();     /* 0 = 週日 */
+  };
+
+  A.WEEKDAY_NAMES = ['日', '一', '二', '三', '四', '五', '六'];
+
   A.isDateStr = function (s) {
     if (typeof s !== 'string' || !/^\d{4}-\d{2}-\d{2}$/.test(s)) return false;
     var p = s.split('-').map(Number);

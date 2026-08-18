@@ -76,8 +76,13 @@
     var check = A.el('span', 'check');
     check.appendChild(A.el('span', 'check-mark', '✓'));
     card.appendChild(check);
-    card.appendChild(A.el('span', 'card-title'));
-    card.appendChild(A.el('span', 'streak'));
+
+    var main = A.el('span', 'card-main');
+    main.appendChild(A.el('span', 'card-title'));
+    main.appendChild(A.el('span', 'card-note'));
+    card.appendChild(main);
+
+    card.appendChild(A.el('span', 'badge'));
     var handle = A.el('span', 'drag-handle', '≡');
     handle.setAttribute('aria-hidden', 'true');
     card.appendChild(handle);
@@ -90,9 +95,14 @@
   function updateRow(row, task) {
     var card = A.$('.card', row);
     var titleEl = A.$('.card-title', row);
-    var streakEl = A.$('.streak', row);
+    var noteEl = A.$('.card-note', row);
+    var badgeEl = A.$('.badge', row);
 
     if (titleEl.textContent !== task.title) titleEl.textContent = task.title;
+
+    var note = task.note || '';
+    if (noteEl.textContent !== note) noteEl.textContent = note;
+    noteEl.hidden = !note;
 
     var done = A.isDone(task);
     card.classList.toggle('is-done', done);
@@ -100,18 +110,15 @@
     card.setAttribute('aria-pressed', done ? 'true' : 'false');
     card.setAttribute('aria-label', task.title);
 
+    /* 一般模式顯示連續期數；編輯模式改顯示週期，方便一眼確認排程 */
+    var text = '', quiet = false;
     if (task.type === 'daily') {
-      var n = A.streak(task);
-      if (n > 0) {
-        streakEl.hidden = false;
-        var txt = String(n);
-        if (streakEl.textContent !== txt) streakEl.textContent = txt;
-      } else {
-        streakEl.hidden = true;
-      }
-    } else {
-      streakEl.hidden = true;
+      if (A.mode === 'edit') { text = A.repeatLabel(task); quiet = true; }
+      else { var n = A.streak(task); text = n > 0 ? String(n) : ''; }
     }
+    badgeEl.hidden = !text;
+    if (text && badgeEl.textContent !== text) badgeEl.textContent = text;
+    badgeEl.classList.toggle('is-quiet', quiet);
   }
 
   function reconcile(listEl, tasks) {
@@ -146,14 +153,24 @@
     if (opts.animate === false) mutate();
     else flip(listEl, mutate);
 
-    els.empties[type].hidden = tasks.length > 0;
+    var emptyEl = els.empties[type];
+    emptyEl.hidden = tasks.length > 0;
+    if (!emptyEl.hidden) {
+      if (type === 'general') {
+        emptyEl.textContent = '還沒有一般任務。按右下角的 ＋ 新增。';
+      } else if (A.tasksOf('daily').length === 0) {
+        emptyEl.textContent = '還沒有日常任務。按右下角的 ＋ 新增。';
+      } else {
+        emptyEl.textContent = '今天沒有到期的日常任務。';
+      }
+    }
     if (type === 'general') {
       els.footGeneral.hidden = !(A.mode === 'normal' && A.hasCompletedGeneral());
     }
   };
 
   /* ---------- Header / Tab / FAB ---------- */
-  var TITLES = { daily: '每日', general: '一般', stats: '統計' };
+  var TITLES = { daily: '日常', general: '一般', stats: '統計' };
 
   R.chrome = function () {
     els.title.textContent = TITLES[A.tab] || '';
@@ -179,30 +196,35 @@
     host.textContent = '';
 
     if (!tasks.length) {
-      var p = A.el('p', 'empty', '還沒有每日任務，統計是空的。');
-      host.appendChild(p);
+      host.appendChild(A.el('p', 'empty', '還沒有日常任務，統計是空的。'));
       return;
     }
 
     tasks.forEach(function (t) {
       var s = A.statsFor(t);
+      var unit = A.streakUnit(t);
       var box = A.el('div', 'stat-item');
       box.appendChild(A.el('div', 'stat-name', s.title));
+      if (s.note) box.appendChild(A.el('div', 'stat-note', s.note));
 
       var meta = A.el('div', 'stat-meta');
-      meta.appendChild(A.el('span', null, '目前連續 ' + s.streak + ' 天'));
-      meta.appendChild(A.el('span', null, '最長 ' + s.longest + ' 天'));
+      meta.appendChild(A.el('span', null, s.repeat));
+      meta.appendChild(A.el('span', null, '目前連續 ' + s.streak + ' ' + unit));
+      meta.appendChild(A.el('span', null, '最長 ' + s.longest + ' ' + unit));
       meta.appendChild(A.el('span', null, '總完成 ' + s.total + ' 次'));
       box.appendChild(meta);
 
       var grid = A.el('div', 'grid30');
       A.recentDays(t, GRID_DAYS).forEach(function (d) {
-        var c = A.el('div', 'cell' + (d.done ? ' is-on' : ''));
+        var cls = 'cell';
+        if (d.state === 'done') cls += ' is-done';
+        else if (d.state === 'missed') cls += ' is-missed';
+        var c = A.el('div', cls);
         c.title = d.date;
         grid.appendChild(c);
       });
       box.appendChild(grid);
-      box.appendChild(A.el('p', 'grid-legend', '最近 ' + GRID_DAYS + ' 天'));
+      box.appendChild(A.el('p', 'grid-legend', '最近 ' + GRID_DAYS + ' 天　亮紫＝完成、深灰＝到期未完成'));
 
       host.appendChild(box);
     });

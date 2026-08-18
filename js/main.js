@@ -115,36 +115,82 @@
     setTimeout(function () { el.hidden = true; }, A.reducedMotion() ? 0 : dur);
   }
 
+  var UNIT_WORD = { day: '天', week: '週', month: '個月', year: '年' };
+  var sheetUnit = 'day';
+
+  function sheetRepeatPreview() {
+    return {
+      type: 'daily',
+      start_date: A.$('#input-start').value || A.logicalToday(),
+      repeat: { unit: sheetUnit, interval: Number(A.$('#input-interval').value) || 1 }
+    };
+  }
+
+  function applyRepeatUi() {
+    A.$$('#seg-repeat button').forEach(function (b) {
+      b.setAttribute('aria-pressed', b.dataset.unit === sheetUnit ? 'true' : 'false');
+    });
+    A.$('#interval-unit').textContent = UNIT_WORD[sheetUnit] || '天';
+    A.$('#repeat-summary').textContent = A.repeatLabel(sheetRepeatPreview());
+  }
+
+  function applySheetType() {
+    A.$('#group-schedule').hidden = sheetType !== 'daily';
+    A.$('#sheet-task-title').textContent =
+      (editingId ? '編輯' : '新增') + (sheetType === 'daily' ? '日常任務' : '一般任務');
+    A.$$('#seg-type button').forEach(function (b) {
+      b.setAttribute('aria-pressed', b.dataset.type === sheetType ? 'true' : 'false');
+    });
+  }
+
   A.openTaskSheet = function (task) {
     var sheet = A.$('#sheet-task');
     var input = A.$('#input-title');
     editingId = task ? task.id : null;
     sheetType = task ? task.type : (A.tab === 'general' ? 'general' : 'daily');
 
-    A.$('#sheet-task-title').textContent = task ? '編輯任務' : '新增任務';
-    A.$('#field-type').hidden = !!task;          /* 既有任務不改類型 */
-    A.$$('#seg-type button').forEach(function (b) {
-      b.setAttribute('aria-pressed', b.dataset.type === sheetType ? 'true' : 'false');
-    });
+    A.$('#btn-task-save').textContent = task ? '儲存' : '創建';
+    A.$('#group-type').hidden = !!task;              /* 既有任務不改類型 */
     input.value = task ? task.title : '';
+    A.$('#input-note').value = task ? (task.note || '') : '';
+
+    var r = task && task.type === 'daily' ? A.repeatRule(task) : { unit: 'day', interval: 1 };
+    sheetUnit = r.unit;
+    A.$('#input-interval').value = String(r.interval);
+    A.$('#input-start').value = (task && task.start_date) ? task.start_date : A.logicalToday();
+
+    applySheetType();
+    applyRepeatUi();
 
     openSheet(sheet);
     input.focus();
     if (task) input.setSelectionRange(input.value.length, input.value.length);
   };
 
+  function collectSheetFields() {
+    return {
+      title: A.$('#input-title').value.trim(),
+      note: A.$('#input-note').value.trim(),
+      start_date: A.$('#input-start').value || A.logicalToday(),
+      unit: sheetUnit,
+      interval: Math.min(99, Math.max(1, Math.round(Number(A.$('#input-interval').value) || 1)))
+    };
+  }
+
   function saveTaskSheet() {
-    var input = A.$('#input-title');
-    var title = input.value.trim();
-    if (!title) { A.toast('請輸入任務名稱'); input.focus(); return; }
+    var fields = collectSheetFields();
+    if (!fields.title) { A.toast('請輸入任務標題'); A.$('#input-title').focus(); return; }
 
     if (editingId) {
-      var t = A.renameTask(editingId, title);
-      if (t) A.render.list(t.type, { animate: false });
+      var t = A.updateTask(editingId, fields);
+      if (t) A.render.list(t.type, { animate: true });
     } else {
-      var nt = A.addTask(sheetType, title);
-      if (A.tab !== nt.type && nt.type !== 'stats') setTab(nt.type);
+      var nt = A.addTask(sheetType, fields);
+      if (A.tab !== nt.type) setTab(nt.type);
       A.render.list(nt.type, { animate: true });
+      if (nt.type === 'daily' && !A.dueToday(nt)) {
+        A.toast('已新增，下次到期 ' + A.nextDueAfter(nt, A.logicalToday()));
+      }
     }
     if (A.tab === 'stats') A.render.stats();
     A.save();
@@ -378,12 +424,27 @@
       var b = e.target.closest('button');
       if (!b) return;
       sheetType = b.dataset.type;
-      A.$$('#seg-type button').forEach(function (x) {
-        x.setAttribute('aria-pressed', x === b ? 'true' : 'false');
-      });
+      applySheetType();
     });
+    A.$('#seg-repeat').addEventListener('click', function (e) {
+      var b = e.target.closest('button');
+      if (!b) return;
+      sheetUnit = b.dataset.unit;
+      applyRepeatUi();
+    });
+    A.$('#input-interval').addEventListener('input', function (e) {
+      var v = Math.round(Number(e.target.value));
+      if (isFinite(v) && v > 99) e.target.value = '99';
+      applyRepeatUi();
+    });
+    A.$('#input-interval').addEventListener('blur', function (e) {
+      var v = Math.min(99, Math.max(1, Math.round(Number(e.target.value) || 1)));
+      e.target.value = String(v);
+      applyRepeatUi();
+    });
+    A.$('#input-start').addEventListener('change', applyRepeatUi);
     A.$('#input-title').addEventListener('keydown', function (e) {
-      if (e.key === 'Enter') { e.preventDefault(); saveTaskSheet(); }
+      if (e.key === 'Enter') { e.preventDefault(); A.$('#input-note').focus(); }
     });
 
     /* 設定 sheet */

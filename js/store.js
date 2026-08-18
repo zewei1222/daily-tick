@@ -3,7 +3,7 @@
 (function (A) {
   'use strict';
 
-  A.SCHEMA_VERSION = 1;
+  A.SCHEMA_VERSION = 2;
 
   A.LSK = {
     token:  'gist_token',
@@ -31,7 +31,32 @@
     };
   };
 
-  function normTask(raw, index, seenIds) {
+  var UNITS = ['day', 'week', 'month', 'year'];
+
+  function normRepeat(raw) {
+    var r = raw && typeof raw === 'object' ? raw : {};
+    var unit = UNITS.indexOf(r.unit) >= 0 ? r.unit : 'day';
+    var interval = Math.round(Number(r.interval));
+    if (!isFinite(interval) || interval < 1) interval = 1;
+    if (interval > 999) interval = 999;
+    return { unit: unit, interval: interval };
+  }
+
+  /* v1 沒有 start_date：用最早的歷史紀錄回推，才不會讓既有的連續紀錄斷掉；
+     沒有歷史就用 created_at 當天，最後才退回今天。 */
+  function deriveStartDate(raw, history, today) {
+    if (A.isDateStr(raw.start_date)) return raw.start_date;
+    if (history && history.length) return history[0];
+    if (typeof raw.created_at === 'string') {
+      var t = new Date(raw.created_at);
+      if (!isNaN(t.getTime())) {
+        return t.getFullYear() + '-' + A.pad2(t.getMonth() + 1) + '-' + A.pad2(t.getDate());
+      }
+    }
+    return today;
+  }
+
+  function normTask(raw, index, seenIds, today) {
     if (!raw || typeof raw !== 'object') return null;
     var title = typeof raw.title === 'string' ? raw.title.trim() : '';
     if (!title) return null;
@@ -45,6 +70,7 @@
       id: id,
       type: type,
       title: title,
+      note: typeof raw.note === 'string' ? raw.note.trim() : '',
       order_index: isFinite(Number(raw.order_index)) ? Math.round(Number(raw.order_index))
                                                      : (index + 1) * 1000,
       created_at: typeof raw.created_at === 'string' ? raw.created_at : A.nowIso()
@@ -57,6 +83,8 @@
       });
       hist.sort();
       t.history = hist;
+      t.start_date = deriveStartDate(raw, hist, today);
+      t.repeat = normRepeat(raw.repeat);
     } else {
       t.completed_at = typeof raw.completed_at === 'string' && raw.completed_at
         ? raw.completed_at : null;
@@ -68,13 +96,15 @@
   A.normalizeState = function (raw) {
     if (!raw || typeof raw !== 'object') return null;
     var seenIds = {};
+    var resetHour = A.clampHour(raw.settings && raw.settings.reset_hour);
+    var today = A.logicalDate(new Date(), resetHour);
     return {
       schema_version: A.SCHEMA_VERSION,
       updated_at: typeof raw.updated_at === 'string' ? raw.updated_at
                                                      : new Date(0).toISOString(),
-      settings: { reset_hour: A.clampHour(raw.settings && raw.settings.reset_hour) },
+      settings: { reset_hour: resetHour },
       tasks: (Array.isArray(raw.tasks) ? raw.tasks : [])
-        .map(function (t, i) { return normTask(t, i, seenIds); })
+        .map(function (t, i) { return normTask(t, i, seenIds, today); })
         .filter(Boolean)
     };
   };

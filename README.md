@@ -2,6 +2,9 @@
 
 單人使用的重複待辦 PWA。零框架、零建置步驟，直接放上 GitHub Pages，從 iPhone 主畫面以 standalone 開啟。
 
+兩種任務：**日常**（依週期重複，每日／每週／每月／每年，記連續期數）與**一般**（做完就結束）。
+兩者都可以加一行敘述，顯示在卡片標題下方。
+
 - 主資料：IndexedDB（單筆 record，key = `app`）
 - 首屏同步渲染：localStorage `mirror`
 - 備份：GitHub private gist（`todo-backup.json`），debounce 3 秒自動上傳
@@ -53,7 +56,8 @@ python3 tools_gen_assets.py
 # 2. 在 index.html 依該機型的 CSS 尺寸與 DPR 加一行 link
 ```
 
-`icons/` 與 `splash/` 都由 `tools_gen_assets.py` 產生（需要 Pillow），圖形跟 App 的黑白高對比風格一致。
+`icons/` 與 `splash/` 都由 `tools_gen_assets.py` 產生（需要 Pillow）。**開機圖必須是純黑底**
+（與 App 啟動後的背景同色），否則冷啟動會閃一下白色。
 
 ## 檔案結構
 
@@ -61,7 +65,7 @@ python3 tools_gen_assets.py
 index.html            單頁；script 放在 body 尾端且不加 defer，確保首屏在解析完就畫好
 manifest.json         PWA manifest
 sw.js                 Service Worker：cache-first + 背景比對更新
-css/tokens.css        唯一的視覺數值來源（色彩／邊框／圓角／間距／字級／動畫時間）
+css/tokens.css        唯一的視覺數值來源（色彩／圓角／間距／字級／動畫時間）
 css/app.css           版面與元件，只引用 tokens 變數
 js/util.js            日期（邏輯日期、shiftDate）、DOM、token 讀取
 js/store.js           IndexedDB + mirror + ui_state、資料正規化與匯入驗證
@@ -79,33 +83,75 @@ test/                 測試（開發用）
 
 ```json
 {
-  "schema_version": 1,
+  "schema_version": 2,
   "updated_at": "2026-08-18T14:03:22.000Z",
   "settings": { "reset_hour": 4 },
   "tasks": [
-    { "id": "uuid", "type": "daily",   "title": "喝水", "order_index": 1000,
-      "created_at": "...", "history": ["2026-08-16", "2026-08-17"] },
-    { "id": "uuid", "type": "general", "title": "繳費", "order_index": 1000,
-      "created_at": "...", "completed_at": null }
+    { "id": "uuid", "type": "daily", "title": "倒垃圾", "note": "可回收與廚餘分開",
+      "start_date": "2026-08-18", "repeat": { "unit": "week", "interval": 1 },
+      "order_index": 1000, "created_at": "...", "history": ["2026-08-18"] },
+    { "id": "uuid", "type": "general", "title": "繳費", "note": "",
+      "order_index": 1000, "created_at": "...", "completed_at": null }
   ]
 }
 ```
 
+`unit` 為 `day` / `week` / `month` / `year`，`interval` 是「每 N 個單位」。
+
 「今天」一律用本地時間算，並往前推 `reset_hour` 小時（預設 4）。沒有任何重置流程：日期一過，
-`logicalToday()` 回傳新值，每日任務自動變回未完成，`history` 永不裁切。改 `reset_hour` 不會動到既有紀錄。
+`logicalToday()` 回傳新值，本期未完成的日常任務自動變回未勾，`history` 永不裁切。
+改 `reset_hour` 不會動到既有紀錄。
+
+### 週期規則
+
+到期日一律從 `start_date` 起算，`history` 記的是**到期日**而不是字面上的今天：
+
+| 情況 | 行為 |
+|---|---|
+| 每週 | 與起始日同一個星期幾；每 N 週就是每 N×7 天 |
+| 每月 31 日遇到 2 月 | 夾到當月最後一天（2/28、閏年 2/29），下個月回到 31 日 |
+| 每年 2/29 | 非閏年落在 2/28，閏年回到 2/29 |
+| 起始日之前 | 一律不到期 |
+
+- **一般模式的日常分頁只顯示「今天到期」的任務**；編輯模式顯示全部（含未到期），方便管理與排序
+- 連續數在每日（間隔 1）時稱「天」，其他週期稱「期」。本期未完成但上一期有完成時，仍顯示上一期的連續數，不會一早就歸零
+- 統計的 30 天格子有三種狀態：亮紫＝完成、深灰＝到期未完成、純黑＝非到期日
+
+### 版本遷移
+
+v1（只有標題）的資料可以直接讀入與匯入，會自動補上：`note` 為空字串、`repeat` 為每日、
+`start_date` 取**最早的歷史紀錄**（沒有歷史才退回 `created_at` 當天），這樣既有的連續紀錄不會斷掉。
 
 ## 測試
 
 ```bash
-node test/logic.test.js          # 純邏輯：日期、連續天數、排序、匯入驗證、同步決策（52 項）
+node test/logic.test.js          # 純邏輯：日期、週期、連續期數、排序、匯入驗證、遷移、同步決策（104 項）
 
 python3 test/serve.py            # 另開一個終端，掛在 /daily-tick/ 路徑
 cd test && npm i                 # 只裝 puppeteer-core，用系統的 google-chrome
-node ui.test.mjs                 # 瀏覽器行為：手勢、編輯模式、離線、匯入匯出、版面（80 項）
+node ui.test.mjs                 # 瀏覽器行為：手勢、編輯模式、週期顯示、鍵盤、離線、版面（123 項）
 node sync.test.mjs               # 用假的 GitHub API 驗證備份流程 F1–F6、E5（26 項）
 ```
 
 UI 測試預設 `executablePath: '/usr/bin/google-chrome'`，換環境時改掉即可。
+
+## 視覺規範
+
+深色純色模式，數值全部集中在 `css/tokens.css`：
+
+| 用途 | 值 |
+|---|---|
+| 全局背景 | `#000000` |
+| 模態主色塊 | `#5E35B1` |
+| 卡片／區塊群組 | `#1C1C1E` |
+| 控制項底色 | `#2C2C2E` |
+| 主文字 | `#FFFFFF` |
+| 次要文字 | `#A09FA5`（單一明度，不混用其他灰） |
+| 強調色 | `#9E7BFF` |
+| 圓角 | 大區塊 24px、卡片與群組 16px、分段按鈕 12px、輸入框與按鈕全圓角 |
+
+**全介面沒有任何邊框**，版面靠純色色塊與圓角切割；禁止漸層、rgba 透明、blur、模糊陰影。
+這幾條都有測試把關（`ui.test.mjs` 的「I. 版面與 tokens」會掃過所有元素檢查邊框與透明色）。
 
 ## 與規格的取捨
 
@@ -118,6 +164,11 @@ UI 測試預設 `executablePath: '/usr/bin/google-chrome'`，換環境時改掉�
 - **回到前景會強制退出編輯模式**，符合「編輯模式狀態不記憶」。
 - **SW 不用 `skipWaiting()`**：新內容在 fetch 階段比對後寫回同一份快取，避免使用中頁面的資源錯亂。
 - Toast 是 `pointer-events: none`，不會吃掉底下按鈕的點擊。
+- **鍵盤期間 sheet 的幾何完全不變**：iOS 的 `visualViewport` 通報永遠慢一拍，跟著事件改高度會在
+  鍵盤滑上來的過程中晃動，而且只要 sheet 變矮就會露出背後的清單。改為只把鍵盤高度餵給內容區的
+  底部留白 `--kb-h`，並在 focus 當下就先用記住的鍵盤高度開好留白。
+- **不做子清單與難度**：難度在沒有經驗值系統時是沒有行為的欄位，子清單會讓卡片、手勢、統計都要
+  重新設計。要加的時候升 `schema_version` 即可。
 
 ## 平台限制（不實作，避免白費工）
 

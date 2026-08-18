@@ -20,13 +20,18 @@ const server = { gists: {}, log: [], nextId: 1, offline: false };
 function handle(method, path, body) {
   server.log.push({ method, path, body: body ? JSON.parse(body) : null });
   if (method === 'GET' && path.startsWith('/gists?')) {
-    return Object.values(server.gists).map(g => ({ id: g.id, public: g.public,
-      updated_at: g.updated_at, files: { 'todo-backup.json': { filename: 'todo-backup.json' } } }));
+    return Object.values(server.gists).map(g => {
+      const files = {};
+      Object.keys(g.files).forEach(n => { files[n] = { filename: n }; });
+      return { id: g.id, public: g.public, updated_at: g.updated_at, files };
+    });
   }
   if (method === 'POST' && path === '/gists') {
     const id = 'gist' + (server.nextId++);
-    const content = JSON.parse(body).files['todo-backup.json'].content;
-    server.gists[id] = { id, public: JSON.parse(body).public, updated_at: new Date().toISOString(), content };
+    const req = JSON.parse(body);
+    const files = {};
+    Object.keys(req.files).forEach(n => { files[n] = req.files[n].content; });
+    server.gists[id] = { id, public: req.public, updated_at: new Date().toISOString(), files };
     return { id };
   }
   const m = path.match(/^\/gists\/([^/?]+)$/);
@@ -34,11 +39,13 @@ function handle(method, path, body) {
     const g = server.gists[m[1]];
     if (!g) return { __status: 404, message: 'Not Found' };
     if (method === 'GET') {
-      return { id: g.id, updated_at: g.updated_at,
-               files: { 'todo-backup.json': { content: g.content, truncated: false } } };
+      const files = {};
+      Object.keys(g.files).forEach(n => { files[n] = { content: g.files[n], truncated: false }; });
+      return { id: g.id, updated_at: g.updated_at, files };
     }
     if (method === 'PATCH') {
-      g.content = JSON.parse(body).files['todo-backup.json'].content;
+      const req = JSON.parse(body);
+      Object.keys(req.files).forEach(n => { g.files[n] = req.files[n].content; });
       g.updated_at = new Date().toISOString();
       return { id: g.id };
     }
@@ -47,7 +54,11 @@ function handle(method, path, body) {
 }
 const remoteState = () => {
   const g = Object.values(server.gists)[0];
-  return g ? JSON.parse(g.content) : null;
+  return g && g.files['todo-backup.json'] ? JSON.parse(g.files['todo-backup.json']) : null;
+};
+const remoteGame = () => {
+  const g = Object.values(server.gists)[0];
+  return g && g.files['game-backup.json'] ? JSON.parse(g.files['game-backup.json']) : null;
 };
 const pushes = () => server.log.filter(r => r.method === 'PATCH' || (r.method === 'POST' && r.path === '/gists'));
 
@@ -147,7 +158,7 @@ group('F5 遠端被改成空且時間較舊 → 不得清空本機');
   await sleep(1200);
   /* 手動把遠端改成空、時間設成過去 */
   const gid = Object.keys(server.gists)[0];
-  server.gists[gid].content = JSON.stringify({
+  server.gists[gid].files['todo-backup.json'] = JSON.stringify({
     schema_version: 1, updated_at: '2000-01-01T00:00:00.000Z',
     settings: { reset_hour: 4 }, tasks: []
   });
@@ -163,7 +174,7 @@ group('F5 遠端被改成空且時間較舊 → 不得清空本機');
 group('F6 本機 0 筆、遠端有資料 → 拉回且不覆蓋');
 {
   const gid = Object.keys(server.gists)[0];
-  server.gists[gid].content = JSON.stringify({
+  server.gists[gid].files['todo-backup.json'] = JSON.stringify({
     schema_version: 1, updated_at: '2000-01-01T00:00:00.000Z', settings: { reset_hour: 4 },
     tasks: Array.from({ length: 10 }, (_, i) => ({
       id: 'r' + i, type: 'daily', title: '遠端' + i, order_index: (i + 1) * 1000,
@@ -240,6 +251,48 @@ group('[16] 已刪除任務必須進入 gist 備份');
      await p7.evaluate(() => [App.state.tasks.length, App.deletedTasks().length]), [2, 1]);
   await ctx6.close();
   await ctx7.close();
+}
+
+/* ================================================================== */
+group('遊戲備份：同一 gist 第二檔案（GAME_SPEC §0.4）');
+{
+  const ctxG = await browser.createBrowserContext();
+  const pg = await newPage(ctxG);
+  await pg.goto(URL, { waitUntil: 'domcontentloaded' });
+  await setPat(pg, 'ghp_test_token_123');
+  await sleep(1200);
+
+  /* 里程碑事件（抽卡）→ 10 秒 debounce 後上傳 game-backup.json */
+  await pg.evaluate(() => {
+    App.game.events.push({ event_id: 'seed', task_id: 'x', task_title_snapshot: 'x',
+      task_type: 'general', difficulty_at_time: 5, date: '2026-01-01',
+      currency_granted: 500, voided: false });
+    App.gacha.rng = () => 0.0;
+    App.gacha.pull('general');           /* milestone → scheduleGamePush */
+  });
+  server.log.length = 0;
+  await sleep(10800);                    /* debounce 10 秒 */
+  const patches = server.log.filter(r => r.method === 'PATCH');
+  ok('里程碑後有上傳', patches.length >= 1, patches.length);
+  const files = patches.length ? Object.keys(patches[patches.length - 1].body.files) : [];
+  ok('一次 PATCH 帶兩個檔案', files.indexOf('todo-backup.json') >= 0 &&
+     files.indexOf('game-backup.json') >= 0, files);
+  const gameRemote = remoteGame();
+  ok('遊戲備份含事件與抽卡數', gameRemote.events.length === 1 && gameRemote.pulls.total === 1);
+  ok('遊戲備份不含 PAT', JSON.stringify(gameRemote).indexOf('ghp_') < 0);
+
+  /* 新裝置：全新遊戲進度 + 遠端有進度 → 硬規則拉回 */
+  const ctxG2 = await browser.createBrowserContext();
+  const pg2 = await newPage(ctxG2);
+  await pg2.goto(URL, { waitUntil: 'domcontentloaded' });
+  eq('新裝置遊戲進度為初始', await pg2.evaluate(() => App.game.pulls.total), 0);
+  await setPat(pg2, 'ghp_test_token_123');
+  await sleep(1500);
+  eq('拉回抽卡進度', await pg2.evaluate(() => App.game.pulls.total), 1);
+  eq('拉回貨幣事件', await pg2.evaluate(() => App.game.events.length), 1);
+  ok('資源列同步更新', (await pg2.$eval('#res-gems', e => e.textContent)) !== '0');
+  await ctxG.close();
+  await ctxG2.close();
 }
 
 console.log('\npage errors: ' + (errors.length ? JSON.stringify(errors) : 'none'));

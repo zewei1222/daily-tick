@@ -8,12 +8,13 @@
   var els = null;
   R.init = function () {
     els = {
-      title:     A.$('#app-title'),
       btnEdit:   A.$('#btn-edit'),
       fab:       A.$('#fab'),
       lists:     { daily: A.$('#list-daily'), general: A.$('#list-general') },
       empties:   { daily: A.$('#empty-daily'), general: A.$('#empty-general') },
-      views:     { daily: A.$('#view-daily'), general: A.$('#view-general'), stats: A.$('#view-stats') },
+      views:     { battle: A.$('#view-battle'), bag: A.$('#view-bag'),
+                   tasks: A.$('#view-tasks'), stats: A.$('#view-stats') },
+      panes:     { daily: A.$('#pane-daily'), general: A.$('#pane-general') },
       footGeneral: A.$('#foot-general'),
       stats:     A.$('#stats-body'),
       tabs:      A.$$('.tab')
@@ -169,15 +170,10 @@
     }
   };
 
-  /* ---------- Header / Tab / FAB ---------- */
-  var TITLES = { daily: '日常', general: '一般', stats: '統計' };
-
+  /* ---------- Tab / 子分段 / FAB ---------- */
   R.chrome = function () {
-    els.title.textContent = TITLES[A.tab] || '';
-    var onList = A.tab === 'daily' || A.tab === 'general';
-    els.btnEdit.classList.toggle('is-invisible', !onList);
     els.btnEdit.textContent = A.mode === 'edit' ? '完成' : '編輯';
-    els.fab.hidden = !onList || A.mode === 'edit';
+    els.fab.hidden = A.tab !== 'tasks' || A.mode === 'edit';
 
     els.tabs.forEach(function (b) {
       b.setAttribute('aria-selected', b.dataset.tab === A.tab ? 'true' : 'false');
@@ -185,6 +181,13 @@
     Object.keys(els.views).forEach(function (k) {
       els.views[k].hidden = k !== A.tab;
     });
+
+    /* 任務 tab 的子分段（日常/一般） */
+    A.$$('#seg-tasks button').forEach(function (b) {
+      b.setAttribute('aria-pressed', b.dataset.pane === A.taskPane ? 'true' : 'false');
+    });
+    els.panes.daily.hidden = A.taskPane !== 'daily';
+    els.panes.general.hidden = A.taskPane !== 'general';
   };
 
   /* ---------- 統計 ---------- */

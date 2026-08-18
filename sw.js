@@ -3,7 +3,7 @@
    不使用 skipWaiting() / clients.claim()；新內容由 fetch 階段寫進同一份快取，
    下次載入即生效，並在本次瀏覽中以提示條告知。 */
 
-var CACHE_VERSION = 'v4';
+var CACHE_VERSION = 'v5';
 var BASE = '/daily-tick/';
 var CACHE = 'daily-tick-' + CACHE_VERSION;
 
@@ -20,6 +20,13 @@ var SHELL = [
   BASE + 'js/render.js',
   BASE + 'js/gestures.js',
   BASE + 'js/main.js',
+  BASE + 'js/game/content.js',
+  BASE + 'js/game/gstore.js',
+  BASE + 'js/game/economy.js',
+  BASE + 'js/game/gacha.js',
+  BASE + 'js/game/battle.js',
+  BASE + 'js/game/farm.js',
+  BASE + 'js/game/grender.js',
   BASE + 'vendor/sortable.min.js',
   BASE + 'icons/icon-180.png',
   BASE + 'icons/icon-192.png',

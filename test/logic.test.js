@@ -287,11 +287,16 @@ var migrated = A.checkPayload({
             created_at: '2026-08-01T00:00:00.000Z', completed_at: null }]
 });
 ok('v1 資料仍可匯入', migrated.ok === true);
-eq('升級為 v2', migrated.state.schema_version, 2);
+eq('升級為現行版本', migrated.state.schema_version, A.SCHEMA_VERSION);
 eq('start_date 取最早歷史紀錄（連續紀錄不斷掉）',
    migrated.state.tasks[0].start_date, '2026-08-16');
 eq('補上每日週期', migrated.state.tasks[0].repeat, { unit: 'day', interval: 1 });
 eq('補上空 note', migrated.state.tasks[0].note, '');
+eq('補上預設難度 1', migrated.state.tasks[0].difficulty, 1);
+eq('難度夾在 1..5', A.normalizeState({ tasks: [
+  { type: 'daily', title: 'x', difficulty: 99 },
+  { type: 'daily', title: 'y', difficulty: 3 }] }).tasks.map(function (t) { return t.difficulty; }),
+  [1, 3]);
 ok('一般任務不會被塞入週期欄位', migrated.state.tasks[1].repeat === undefined);
 A.state = migrated.state;
 A.logicalToday = function () { return '2026-08-18'; };

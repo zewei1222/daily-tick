@@ -126,15 +126,19 @@
     return task.type === 'daily' ? A.isDoneToday(task) : !!task.completed_at;
   };
 
+  /* 回傳 { done, date } 供遊戲層寫入 / 沖銷貨幣事件（GAME_SPEC §0.1）。
+     date 是本期到期日：週期任務在非到期日勾選，事件也記在正確的一期。 */
   A.toggle = function (task) {
     if (task.type === 'daily') {
       var d = A.currentPeriod(task) || A.logicalToday();
       var i = task.history.indexOf(d);
-      if (i >= 0) task.history.splice(i, 1);
-      else { task.history.push(d); task.history.sort(); }
-    } else {
-      task.completed_at = task.completed_at ? null : A.nowIso();
+      if (i >= 0) { task.history.splice(i, 1); return { done: false, date: d }; }
+      task.history.push(d);
+      task.history.sort();
+      return { done: true, date: d };
     }
+    task.completed_at = task.completed_at ? null : A.nowIso();
+    return { done: !!task.completed_at, date: A.logicalToday() };
   };
 
   /* ================= 連續期數 =================
@@ -245,6 +249,7 @@
       type: type,
       title: String(fields.title || '').trim(),
       note: String(fields.note || '').trim(),
+      difficulty: clampDifficulty(fields.difficulty),
       order_index: A.nextOrder(type),
       created_at: A.nowIso(),
       deleted_at: null
@@ -263,11 +268,17 @@
     return t;
   };
 
+  function clampDifficulty(d) {
+    d = Math.round(Number(d));
+    return isFinite(d) && d >= 1 && d <= 5 ? d : 1;
+  }
+
   A.updateTask = function (id, fields) {
     var t = A.findTask(id);
     if (!t) return null;
     t.title = String(fields.title || '').trim() || t.title;
     t.note = String(fields.note || '').trim();
+    if (fields.difficulty != null) t.difficulty = clampDifficulty(fields.difficulty);
     if (t.type === 'daily') {
       if (fields.start_date) t.start_date = fields.start_date;
       t.repeat = {

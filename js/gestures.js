@@ -154,7 +154,17 @@
       return;
     }
 
-    A.toggle(task);
+    var r = A.toggle(task);
+    /* 貨幣事件（GAME_SPEC §0.1）：完成寫入、取消沖銷。todo 資料不受遊戲層影響。 */
+    if (A.economy && A.game) {
+      if (r.done) {
+        var gems = A.economy.onTaskCompleted(task, r.date);
+        if (A.toast) A.toast('💎 +' + gems);
+      } else {
+        A.economy.onTaskUncompleted(task, r.date);
+      }
+      if (A.grender) A.grender.resources();
+    }
     A.render.list(task.type, { animate: true });
     if (A.tab === 'stats') A.render.stats();
     A.save();

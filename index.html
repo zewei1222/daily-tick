@@ -4,10 +4,10 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
 <title>極簡待辦</title>
-<meta name="description" content="極簡重複待辦清單">
+<meta name="description" content="極簡重複待辦清單與放置遊戲">
 <meta name="theme-color" content="#000000">
 <!-- 版本標記：與 sw.js 的 CACHE_VERSION 同號，App 靠它判斷有沒有新版 -->
-<meta name="app-version" content="4">
+<meta name="app-version" content="5">
 <meta name="mobile-web-app-capable" content="yes">
 <meta name="apple-mobile-web-app-capable" content="yes">
 <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
@@ -16,8 +16,6 @@
 <link rel="apple-touch-icon" href="/daily-tick/icons/icon-180.png">
 <link rel="icon" href="/daily-tick/icons/icon-192.png">
 
-<!-- 開機圖：避免 standalone 冷啟動閃色（SPEC §7.4）。
-     目前涵蓋 iPhone 15 Pro（393x852 @3x）；新增機型只要再加一行 link。 -->
 <link rel="apple-touch-startup-image"
       media="(device-width: 393px) and (device-height: 852px) and (-webkit-device-pixel-ratio: 3) and (orientation: portrait)"
       href="/daily-tick/splash/splash-1179x2556.png">
@@ -27,35 +25,125 @@
 </head>
 <body>
 
-<header class="app-head">
-  <button class="btn-text head-l" id="btn-edit" type="button">編輯</button>
-  <h1 class="app-title" id="app-title">日常</h1>
-  <button class="btn-icon head-r" id="btn-settings" type="button" aria-label="設定">
+<!-- 常駐資源列（GAME_SPEC §4b.1）：所有 tab 皆顯示，無立繪無裝飾 -->
+<header class="res-bar">
+  <span class="res-item">💎 <span class="res-num" id="res-gems">0</span></span>
+  <span class="res-item">🔧 <span class="res-num" id="res-material">0</span></span>
+  <span class="res-item">🪙 <span class="res-num" id="res-gold">0</span></span>
+  <span class="res-claim-dot" id="res-claim-dot" hidden aria-label="有待領獎勵"></span>
+  <span class="res-spacer"></span>
+  <button class="btn-icon" id="btn-settings" type="button" aria-label="設定">
     ⚙<span class="sync-dot" id="sync-dot" hidden></span>
   </button>
 </header>
 
 <main class="app-main">
 
-  <section class="view" id="view-daily" data-type="daily">
+  <!-- ============ 對戰 ============ -->
+  <section class="view" id="view-battle" hidden>
     <div class="view-inner">
-      <ul class="list" id="list-daily"></ul>
-      <p class="empty" id="empty-daily" hidden></p>
+      <div class="stage-line">
+        <span>第 <span id="stage-now">1</span> 層</span>
+        <span class="stage-max">最高通過 第 <span id="stage-max">0</span> 層</span>
+      </div>
+
+      <div class="battle-box">
+        <div class="battle-units">
+          <div class="unit is-player">
+            <div class="unit-icon" id="bu-player-icon">🥷</div>
+            <div class="unit-name">你</div>
+            <div class="unit-traits" id="bu-player-power"></div>
+            <div class="hp-wrap">
+              <div class="hp-track">
+                <div class="hp-fill" id="hp-player"></div>
+                <div class="shield-fill" id="shield-player"></div>
+              </div>
+              <div class="hp-num" id="hpnum-player"></div>
+            </div>
+          </div>
+          <div class="vs">VS</div>
+          <div class="unit is-monster">
+            <div class="unit-icon" id="bu-monster-icon">❓</div>
+            <div class="unit-name" id="bu-monster-name">—</div>
+            <div class="unit-traits" id="bu-monster-traits"></div>
+            <div class="hp-wrap">
+              <div class="hp-track">
+                <div class="hp-fill" id="hp-monster"></div>
+                <div class="shield-fill" id="shield-monster"></div>
+              </div>
+              <div class="hp-num" id="hpnum-monster"></div>
+            </div>
+          </div>
+        </div>
+        <div class="battle-log" id="battle-log"></div>
+      </div>
+
+      <div class="battle-actions">
+        <button class="btn is-primary" id="btn-fight" type="button">挑戰此層</button>
+        <button class="btn" id="btn-auto" type="button">自動刷關</button>
+        <button class="btn" id="btn-skip" type="button" hidden>跳過動畫</button>
+      </div>
+
+      <div class="pending-box">
+        <span>待領　<span class="pending-nums" id="pending-nums">🔧 0　🪙 0</span></span>
+        <button class="btn is-primary" id="btn-claim" type="button">領取</button>
+      </div>
+
+      <button class="gacha-entry" id="btn-gacha-open" type="button">🔮 招募（抽卡）</button>
     </div>
   </section>
 
-  <section class="view" id="view-general" data-type="general" hidden>
+  <!-- ============ 背包 ============ -->
+  <section class="view" id="view-bag" hidden>
     <div class="view-inner">
-      <ul class="list" id="list-general"></ul>
-      <p class="empty" id="empty-general" hidden></p>
-      <div class="list-foot" id="foot-general" hidden>
-        <button class="btn is-block" id="btn-clear-done" type="button">清除已完成</button>
+      <div class="sub-head">
+        <div class="seg" id="seg-bag">
+          <button type="button" data-pane="owned" aria-pressed="true">擁有</button>
+          <button type="button" data-pane="dex" aria-pressed="false">圖鑑</button>
+        </div>
+      </div>
+      <div class="pane" id="pane-owned"></div>
+      <div class="pane" id="pane-dex" hidden>
+        <div class="dex-filters" id="dex-filters"></div>
+        <div class="dex-grid" id="dex-grid"></div>
+        <div class="dex-detail" id="dex-detail" hidden></div>
       </div>
     </div>
   </section>
 
+  <!-- ============ 任務（沿用 todo 全套互動） ============ -->
+  <section class="view" id="view-tasks">
+    <div class="view-inner">
+      <div class="sub-head">
+        <div class="seg" id="seg-tasks">
+          <button type="button" data-pane="daily" aria-pressed="true">日常</button>
+          <button type="button" data-pane="general" aria-pressed="false">一般</button>
+        </div>
+        <button class="btn-text" id="btn-edit" type="button">編輯</button>
+      </div>
+      <div class="pane" id="pane-daily">
+        <ul class="list" id="list-daily"></ul>
+        <p class="empty" id="empty-daily" hidden></p>
+      </div>
+      <div class="pane" id="pane-general" hidden>
+        <ul class="list" id="list-general"></ul>
+        <p class="empty" id="empty-general" hidden></p>
+        <div class="list-foot" id="foot-general" hidden>
+          <button class="btn is-block" id="btn-clear-done" type="button">清除已完成</button>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- ============ 統計 ============ -->
   <section class="view" id="view-stats" hidden>
-    <div class="view-inner" id="stats-body"></div>
+    <div class="view-inner">
+      <div class="group" id="game-stats">
+        <span class="group-title">遊戲進度</span>
+        <div class="gstat-grid" id="gstat-grid"></div>
+      </div>
+      <div id="stats-body"></div>
+    </div>
   </section>
 
 </main>
@@ -63,8 +151,9 @@
 <button class="fab" id="fab" type="button" aria-label="新增任務">＋</button>
 
 <nav class="tab-bar" role="tablist">
-  <button class="tab" role="tab" data-tab="daily" aria-selected="true" type="button">日常</button>
-  <button class="tab" role="tab" data-tab="general" aria-selected="false" type="button">一般</button>
+  <button class="tab" role="tab" data-tab="battle" aria-selected="false" type="button">對戰</button>
+  <button class="tab" role="tab" data-tab="bag" aria-selected="false" type="button">背包</button>
+  <button class="tab" role="tab" data-tab="tasks" aria-selected="true" type="button">任務</button>
   <button class="tab" role="tab" data-tab="stats" aria-selected="false" type="button">統計</button>
 </nav>
 
@@ -102,6 +191,18 @@
         </div>
       </div>
 
+      <div class="group" id="group-difficulty">
+        <span class="group-title">難度</span>
+        <div class="diff-seg" id="seg-difficulty">
+          <button type="button" data-diff="1" aria-pressed="true">✦</button>
+          <button type="button" data-diff="2" aria-pressed="false">✦✦</button>
+          <button type="button" data-diff="3" aria-pressed="false">✦✦✦</button>
+          <button type="button" data-diff="4" aria-pressed="false">✧✧</button>
+          <button type="button" data-diff="5" aria-pressed="false">✧✧✧</button>
+        </div>
+        <p class="hint" id="diff-hint"></p>
+      </div>
+
       <div class="group" id="group-schedule">
         <span class="group-title">預定日程</span>
         <div class="group-row">
@@ -128,6 +229,33 @@
         </div>
       </div>
 
+    </div>
+  </div>
+</div>
+
+<!-- 抽卡 -->
+<div class="sheet" id="sheet-gacha" hidden role="dialog" aria-modal="true">
+  <div class="sheet-head">
+    <button class="btn-text head-l" data-act="close" type="button">返回</button>
+    <span class="sheet-title">招募</span>
+    <span class="head-r"></span>
+  </div>
+  <div class="sheet-body">
+    <div class="sheet-inner">
+      <div class="group">
+        <span class="group-title" id="gacha-pool-name">通用招募</span>
+        <p class="status-line"><span class="status-value">💎 <span id="gacha-gems">0</span></span></p>
+        <div class="pity-line">
+          <span>稀有保底 <span id="pity-rare">0</span>/<span id="pity-rare-max">35</span></span>
+          <span>神話保底 <span id="pity-mythic">0</span>/<span id="pity-mythic-max">200</span></span>
+        </div>
+        <div class="btn-row is-spaced">
+          <button class="btn is-primary" id="btn-pull-1" type="button">單抽（💎5）</button>
+          <button class="btn" id="btn-pull-10" type="button">十連（💎50）</button>
+        </div>
+        <p class="hint">稀有以上 5%（稀有 4.5%、神話 0.5%）。重複抽中會提升該項目的等級上限。</p>
+      </div>
+      <div class="pull-result" id="pull-result"></div>
     </div>
   </div>
 </div>
@@ -162,6 +290,7 @@
           <span class="status-value" id="sync-status">未設定備份</span>
         </p>
         <p class="hint" id="sync-detail"></p>
+        <p class="hint">備份含兩個檔案：todo-backup.json 與 game-backup.json，存於同一個 private gist。</p>
         <div class="btn-row is-spaced">
           <button class="btn" id="btn-sync-now" type="button">立即同步</button>
         </div>
@@ -179,7 +308,7 @@
       </div>
 
       <div class="group">
-        <span class="group-title">匯出</span>
+        <span class="group-title">匯出（任務資料）</span>
         <textarea class="input" id="ta-export" readonly rows="4"></textarea>
         <div class="btn-row is-spaced">
           <button class="btn" id="btn-export-copy" type="button">複製</button>
@@ -187,7 +316,7 @@
       </div>
 
       <div class="group">
-        <label class="group-title" for="ta-import">匯入（會覆蓋現有資料）</label>
+        <label class="group-title" for="ta-import">匯入（會覆蓋現有任務資料）</label>
         <textarea class="input" id="ta-import" rows="4" autocapitalize="none" spellcheck="false"></textarea>
         <div class="btn-row is-spaced">
           <button class="btn is-danger" id="btn-import" type="button">匯入並覆蓋</button>
@@ -210,9 +339,16 @@
 <script src="/daily-tick/js/util.js"></script>
 <script src="/daily-tick/js/store.js"></script>
 <script src="/daily-tick/js/model.js"></script>
+<script src="/daily-tick/js/game/content.js"></script>
+<script src="/daily-tick/js/game/gstore.js"></script>
+<script src="/daily-tick/js/game/economy.js"></script>
+<script src="/daily-tick/js/game/gacha.js"></script>
+<script src="/daily-tick/js/game/battle.js"></script>
+<script src="/daily-tick/js/game/farm.js"></script>
 <script src="/daily-tick/js/sync.js"></script>
 <script src="/daily-tick/js/render.js"></script>
 <script src="/daily-tick/js/gestures.js"></script>
+<script src="/daily-tick/js/game/grender.js"></script>
 <script src="/daily-tick/js/main.js"></script>
 </body>
 </html>

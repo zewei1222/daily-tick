@@ -106,7 +106,7 @@ group('D. 手勢：點擊 / 左滑刪除');
      s => s.hidden), true);
 
   /* D2b 快速連點 10 次（用一般任務：不會沉底，座標固定指向同一張卡） */
-  await tapEl(page, '.tab[data-tab="general"]');
+  await tapEl(page, '#seg-tasks button[data-pane="general"]');
   await sleep(200);
   await addTask(page, 'general', '連點');
   await page.evaluate(() => {
@@ -128,7 +128,7 @@ group('D. 手勢：點擊 / 左滑刪除');
   eq('D2b IndexedDB 與記憶體一致', idbVal, null);
   await page.evaluate(() => { App.softDeleteTask(App.state.tasks.find(t => t.title === '連點').id);
                               App.render.list('general', { animate: false }); App.save(); });
-  await tapEl(page, '.tab[data-tab="daily"]');
+  await tapEl(page, '#seg-tasks button[data-pane="daily"]');
   await sleep(200);
 
   /* D3-D6 左滑 */
@@ -138,7 +138,7 @@ group('D. 手勢：點擊 / 左滑刪除');
   eq('D3 卡片未被刪除', (await titles(page, 'daily')).length, 2);
 
   /* D5 點畫面其他處收回 */
-  await tapEl(page, '#app-title');
+  await tapEl(page, '.res-bar');
   await sleep(300);
   eq('D5 點其他處收回', await page.$eval('#list-daily .row:first-child .card',
      c => c.style.transform), '');
@@ -269,7 +269,7 @@ group('C7 新增 / 一般分頁 / H 清除已完成');
   eq('C7 新任務排在未完成的最後', await titles(page, 'daily'), ['第二筆', '第三筆', '第一筆']);
 
   /* 一般分頁 */
-  await tapEl(page, '.tab[data-tab="general"]');
+  await tapEl(page, '#seg-tasks button[data-pane="general"]');
   await sleep(200);
   await addTask(page, 'general', 'g1');
   await addTask(page, 'general', 'g2');
@@ -289,8 +289,9 @@ group('C7 新增 / 一般分頁 / H 清除已完成');
 
   /* J7 分頁記憶 */
   await page.goto(URL, { waitUntil: 'domcontentloaded' });
-  eq('J7 記住上次分頁', await page.evaluate(() => App.tab), 'general');
-  eq('J7 標題正確', await page.$eval('#app-title', e => e.textContent), '一般');
+  eq('J7 記住上次子分頁', await page.evaluate(() => [App.tab, App.taskPane]),
+     ['tasks', 'general']);
+  eq('J7 一般清單為顯示中', await page.$eval('#pane-general', e => e.hidden), false);
   await ctx.close();
 }
 
@@ -543,7 +544,9 @@ group('軟刪除：SOFT_DELETE_TASK.md 的 16 項驗收');
     return { streak: App.streak(t), longest: App.longestStreak(t), total: t.history.length };
   });
   eq('[3] 其他任務的統計數字未受影響', after, before);
-  await tapEl(page, '.tab[data-tab="daily"]');
+  await tapEl(page, '.tab[data-tab="tasks"]');
+  await sleep(250);
+  await tapEl(page, '#seg-tasks button[data-pane="daily"]');
   await sleep(250);
 
   /* 4. 設定頁「已刪除的任務」顯示正確的刪除日期與紀錄次數 */
@@ -643,7 +646,7 @@ group('軟刪除：SOFT_DELETE_TASK.md 的 16 項驗收');
   }));
 
   /* 9 + 10. 一般分頁清除已完成 */
-  await tapEl(page, '.tab[data-tab="general"]');
+  await tapEl(page, '#seg-tasks button[data-pane="general"]');
   await sleep(250);
   await page.evaluate(() => {
     ['繳費', '寄信', '還沒做'].forEach(t => App.addTask('general', { title: t }));
@@ -678,7 +681,9 @@ group('軟刪除：SOFT_DELETE_TASK.md 的 16 項驗收');
   eq('[11] 一般分頁清單為空', (await titles(page, 'general')).length, 0);
   eq('[11] 顯示空狀態文案', await page.$eval('#empty-general',
      e => e.hidden ? null : e.textContent), '還沒有一般任務。按右下角的 ＋ 新增。');
-  await tapEl(page, '.tab[data-tab="daily"]');
+  await tapEl(page, '.tab[data-tab="tasks"]');
+  await sleep(250);
+  await tapEl(page, '#seg-tasks button[data-pane="daily"]');
   await sleep(250);
   eq('[11] 日常分頁也是空狀態', await page.$eval('#empty-daily',
      e => e.hidden ? null : e.textContent), '還沒有日常任務。按右下角的 ＋ 新增。');
@@ -686,7 +691,9 @@ group('軟刪除：SOFT_DELETE_TASK.md 的 16 項驗收');
     await tapEl(page, '.tab[data-tab="stats"]'); await sleep(250);
     return page.$$eval('.stat-name', ns => ns.map(n => n.textContent));
   })(), []);
-  await tapEl(page, '.tab[data-tab="daily"]');
+  await tapEl(page, '.tab[data-tab="tasks"]');
+  await sleep(250);
+  await tapEl(page, '#seg-tasks button[data-pane="daily"]');
   await sleep(250);
 
   /* 15. 強制關閉重開（以 IndexedDB 落地 + 重新導覽驗證） */
@@ -888,7 +895,7 @@ group('I. 版面與 tokens');
   });
   eq('I1 Tab bar 貼齊底部', Math.round(layout.tabBottom), layout.h);
   ok('I1 FAB 不壓在 Tab 上', layout.fabOverTab, layout);
-  eq('I3 內容區可捲動', await page.$eval('#view-daily',
+  eq('I3 內容區可捲動', await page.$eval('#view-tasks',
      v => getComputedStyle(v).overflowY), 'auto');
   eq('全局背景為純黑', await page.$eval('body', b => getComputedStyle(b).backgroundColor),
      'rgb(0, 0, 0)');
@@ -928,6 +935,186 @@ group('I. 版面與 tokens');
             '--r-lg', '--r-md', '--r-pill', '--dur-mid', '--swipe-action-w']
       .every(k => cs.getPropertyValue(k).trim() !== '');
   }));
+  await ctx.close();
+}
+
+/* ================================================================= */
+group('遊戲層：難度 / 貨幣 / 資源列');
+{
+  const ctx = await browser.createBrowserContext();
+  const page = await newPage(ctx);
+  await page.goto(URL, { waitUntil: 'domcontentloaded' });
+
+  /* 難度選擇器（SPEC §4.1a） */
+  await tapEl(page, '#fab');
+  await sleep(250);
+  eq('新增預設難度 1', await page.$eval('#seg-difficulty [aria-pressed="true"]',
+     b => b.dataset.diff), '1');
+  eq('提示每日難度 1 = 💎1', await page.$eval('#diff-hint', e => e.textContent), '完成一次獲得 💎1');
+  await tapEl(page, '#seg-difficulty [data-diff="4"]');
+  await sleep(80);
+  eq('切難度 4 提示 💎4', await page.$eval('#diff-hint', e => e.textContent), '完成一次獲得 💎4');
+  await tapEl(page, '#seg-type button[data-type="general"]');
+  await sleep(80);
+  eq('一般任務難度 4 = 💎8', await page.$eval('#diff-hint', e => e.textContent), '完成一次獲得 💎8');
+  await tapEl(page, '#seg-type button[data-type="daily"]');
+  await sleep(80);
+  await page.$eval('#input-title', i => { i.value = '重訓'; });
+  await tapEl(page, '#sheet-task [data-act="save"]');
+  await sleep(350);
+  eq('難度寫入任務', await page.evaluate(() =>
+     App.state.tasks.find(t => t.title === '重訓').difficulty), 4);
+
+  /* 完成 → 貨幣事件 + 資源列 */
+  eq('初始寶石 0', await page.$eval('#res-gems', e => e.textContent), '0');
+  await tapEl(page, '#list-daily .row:first-child .card');
+  await sleep(300);
+  eq('完成後資源列 +4', await page.$eval('#res-gems', e => e.textContent), '4');
+  const ev = await page.evaluate(() => App.game.events[0]);
+  ok('事件含快照與難度', ev.task_title_snapshot === '重訓' && ev.difficulty_at_time === 4 &&
+     ev.currency_granted === 4 && ev.voided === false, ev);
+  await tapEl(page, '#list-daily .row:last-child .card');   /* 取消（已完成沉底後仍是唯一一張） */
+  await sleep(300);
+  eq('取消 → 沖銷 → 資源列歸 0', await page.$eval('#res-gems', e => e.textContent), '0');
+  eq('事件不刪除只標記', await page.evaluate(() =>
+     [App.game.events.length, App.game.events[0].voided]), [1, true]);
+
+  /* 編輯任務可改難度 */
+  await tapEl(page, '#btn-edit');
+  await sleep(250);
+  await tapEl(page, '#list-daily .row:first-child .card-title');
+  await sleep(300);
+  eq('編輯帶入現有難度', await page.$eval('#seg-difficulty [aria-pressed="true"]',
+     b => b.dataset.diff), '4');
+  await tapEl(page, '#seg-difficulty [data-diff="2"]');
+  await sleep(80);
+  await tapEl(page, '#sheet-task [data-act="save"]');
+  await sleep(300);
+  eq('難度修改即寫入', await page.evaluate(() =>
+     App.state.tasks.find(t => t.title === '重訓').difficulty), 2);
+  await ctx.close();
+}
+
+/* ================================================================= */
+group('遊戲層：抽卡 / 背包 / 圖鑑 / 對戰');
+{
+  const ctx = await browser.createBrowserContext();
+  const page = await newPage(ctx);
+  await page.goto(URL, { waitUntil: 'domcontentloaded' });
+
+  /* 灌寶石（走正規事件管道） */
+  await page.evaluate(() => {
+    App.game.events.push({ event_id: 'seed', task_id: 'x', task_title_snapshot: 'x',
+      task_type: 'general', difficulty_at_time: 5, date: '2026-01-01',
+      currency_granted: 500, voided: false });
+    App.gstore.save({ milestone: false });
+    App.grender.resources();
+  });
+  eq('資源列顯示 500', await page.$eval('#res-gems', e => e.textContent), '500');
+
+  /* 對戰 tab */
+  await tapEl(page, '.tab[data-tab="battle"]');
+  await sleep(250);
+  eq('顯示目前層數', await page.$eval('#stage-now', e => e.textContent), '1');
+  await page.evaluate(() => { App.grender.playResult = (r, o) => { if (o && o.done) o.done(); }; });
+  await tapEl(page, '#btn-fight');
+  await sleep(400);
+  eq('初始配置打贏第 1 層 → 自動進第 2 層', await page.$eval('#stage-now', e => e.textContent), '2');
+  eq('最高層數更新', await page.$eval('#stage-max', e => e.textContent), '1');
+  ok('待領池有掉落', await page.evaluate(() =>
+     App.game.stage.pending.material > 0 && App.game.stage.pending.gold > 0));
+  eq('資源列出現待領提示點', await page.$eval('#res-claim-dot', e => e.hidden), false);
+  await tapEl(page, '#btn-claim');
+  await sleep(300);
+  ok('領取後入袋', await page.evaluate(() =>
+     App.game.resources.material > 0 && App.game.resources.gold > 0));
+  eq('領取後提示點消失', await page.$eval('#res-claim-dot', e => e.hidden), true);
+
+  /* 自動刷關開關 */
+  await tapEl(page, '#btn-auto');
+  await sleep(150);
+  eq('自動刷關開啟', await page.evaluate(() => App.game.stage.auto_farming), true);
+  await tapEl(page, '#btn-auto');
+  await sleep(150);
+  eq('自動刷關關閉', await page.evaluate(() => App.game.stage.auto_farming), false);
+
+  /* 抽卡 */
+  await tapEl(page, '#btn-gacha-open');
+  await sleep(300);
+  eq('抽卡面板顯示餘額', await page.$eval('#gacha-gems', e => e.textContent), '500');
+  await page.evaluate(() => { App.gacha.rng = () => 0.0; });   /* 固定抽 common 第一件 */
+  await tapEl(page, '#btn-pull-1');
+  await sleep(300);
+  eq('顯示一張結果卡', await page.$$eval('#pull-result .pull-card', cs => cs.length), 1);
+  ok('寶石扣 5', (await page.$eval('#gacha-gems', e => e.textContent)) === '495');
+  await tapEl(page, '#btn-pull-10');
+  await sleep(400);
+  eq('十連顯示 10 張', await page.$$eval('#pull-result .pull-card', cs => cs.length), 10);
+  ok('重複抽中顯示上限提升', await page.$$eval('#pull-result .pull-card .pc-tag',
+     ts => ts.some(t => t.textContent.indexOf('上限→') >= 0)));
+  eq('保底計數器顯示', await page.$eval('#pity-rare', e => e.textContent), '11');
+  await tapEl(page, '#sheet-gacha [data-act="close"]');
+  await sleep(300);
+
+  /* 背包：擁有 */
+  await tapEl(page, '.tab[data-tab="bag"]');
+  await sleep(300);
+  ok('擁有頁列出初始三件以上', await page.$$eval('#pane-owned .item-row', rs => rs.length >= 3));
+  ok('裝備中摘要含角色', await page.$eval('.equip-summary', e =>
+     e.textContent.indexOf('掃地僧') >= 0));
+  /* 強化（先確保資源足夠：Lv1 → 2 需 🔧5 🪙20） */
+  await page.evaluate(() => {
+    App.game.resources.material += 100; App.game.resources.gold += 100;
+    App.grender.owned(); App.grender.resources();
+  });
+  const lvBefore = await page.evaluate(() => App.game.items.char_001.current_level);
+  const resBefore = await page.evaluate(() => ({ ...App.game.resources }));
+  await tapEl(page, '#pane-owned .item-row[data-id="char_001"] [data-act="upgrade"]');
+  await sleep(300);
+  eq('強化 +1 級', await page.evaluate(() => App.game.items.char_001.current_level), lvBefore + 1);
+  eq('強化扣資源 🔧5 🪙20', await page.evaluate(() =>
+     [App.game.resources.material, App.game.resources.gold]),
+     [resBefore.material - 5, resBefore.gold - 20]);
+
+  /* 圖鑑 */
+  await tapEl(page, '#seg-bag button[data-pane="dex"]');
+  await sleep(300);
+  eq('類型頁籤由 entity_types 生成', await page.$$eval('#dex-filters [data-filter-type]',
+     bs => bs.map(b => b.textContent)), ['角色', '武裝', '寵物']);
+  await tapEl(page, '#dex-filters [data-filter-type="gear"]');
+  await sleep(200);
+  const gearCells = await page.$$eval('#dex-grid .dex-cell', cs => cs.length);
+  eq('武裝圖鑑 18 格（8 普通 + 10 特殊）', gearCells, 18);
+  ok('未擁有顯示灰階', await page.$$eval('#dex-grid .dex-cell.is-unowned', cs => cs.length > 0));
+  /* 篩選：尖刺流派 = 2 件 */
+  await page.select('#dex-tag', 'spike');
+  await sleep(200);
+  eq('流派篩選（尖刺）→ 2 件', await page.$$eval('#dex-grid .dex-cell', cs => cs.length), 2);
+  await page.select('#dex-tag', 'none');
+  await sleep(200);
+  eq('無流派 → 8 件普通裝備', await page.$$eval('#dex-grid .dex-cell', cs => cs.length), 8);
+  await page.select('#dex-tag', 'all');
+  await sleep(200);
+  /* 搜尋部分比對 */
+  await page.type('#dex-q', '劍');
+  await sleep(250);
+  eq('搜尋「劍」→ 木劍與鐵劍', await page.$$eval('#dex-grid .dex-cell', cs => cs.length), 2);
+  await page.$eval('#dex-q', i => { i.value = ''; i.dispatchEvent(new Event('input', {bubbles:true})); });
+  await sleep(200);
+  /* 詳情面板：未擁有一樣顯示完整資訊 */
+  await tapEl(page, '#dex-grid .dex-cell.is-unowned');
+  await sleep(200);
+  eq('詳情面板開啟', await page.$eval('#dex-detail', e => e.hidden), false);
+  ok('未擁有顯示名稱與敘述', await page.$eval('#dex-detail', e =>
+     e.querySelector('.dd-name').textContent.length > 0 &&
+     e.querySelector('.dd-desc').textContent.length > 0));
+  ok('圖鑑不顯示等級資訊', await page.$eval('#dex-detail', e =>
+     e.textContent.indexOf('Lv') < 0));
+
+  /* 統計 tab 遊戲區塊 */
+  await tapEl(page, '.tab[data-tab="stats"]');
+  await sleep(250);
+  ok('遊戲進度統計顯示', await page.$$eval('#gstat-grid .gstat-item', gs => gs.length === 4));
   await ctx.close();
 }
 

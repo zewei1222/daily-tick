@@ -16,16 +16,46 @@
     toastTimer = setTimeout(function () { el.hidden = true; }, ms || 2200);
   };
 
-  /* ================= 分頁與捲動記憶（SPEC §9.2） ================= */
+  /* ================= 分頁與捲動記憶（SPEC §9.2、GAME_SPEC §4b.3） ================= */
   var saveUi = A.debounce(function () { A.writeUiState(ui); }, 200);
 
   function currentView() { return A.render.els.views[A.tab]; }
 
   function restoreScroll() {
-    ['daily', 'general', 'stats'].forEach(function (k) {
+    Object.keys(A.render.els.views).forEach(function (k) {
       var v = A.render.els.views[k];
-      if (v) v.scrollTop = ui.scroll[k] || 0;
+      if (v) v.scrollTop = (ui.scroll && ui.scroll[k]) || 0;
     });
+  }
+
+  /* 舊版 ui_state 的 tab 是 daily/general/stats：遷移成新結構 */
+  function migrateUi(u) {
+    if (u.tab === 'daily' || u.tab === 'general') {
+      u.taskPane = u.tab;
+      u.tab = 'tasks';
+    } else if (u.tab === 'stats') {
+      u.tab = 'stats';
+    }
+    if (['battle', 'bag', 'tasks', 'stats'].indexOf(u.tab) < 0) u.tab = 'tasks';
+    if (u.taskPane !== 'general') u.taskPane = 'daily';
+    if (u.bagPane !== 'dex') u.bagPane = 'owned';
+    u.scroll = u.scroll || {};
+    return u;
+  }
+
+  function renderTab(tab, opts) {
+    if (tab === 'tasks') {
+      A.render.list('daily', opts || { animate: false });
+      A.render.list('general', opts || { animate: false });
+    } else if (tab === 'stats') {
+      A.render.stats();
+      A.grender.gameStats();
+    } else if (tab === 'battle') {
+      A.grender.battle();
+    } else if (tab === 'bag') {
+      if (ui.bagPane === 'dex') A.grender.dex();
+      else A.grender.owned();
+    }
   }
 
   function setTab(tab) {
@@ -34,12 +64,33 @@
     if (v) ui.scroll[A.tab] = v.scrollTop;
     A.tab = tab;
     ui.tab = tab;
-    if (A.mode === 'edit') setMode('normal', true);
+    if (A.mode === 'edit' && tab !== 'tasks') setMode('normal', true);
     A.gestures.closeOpen(false);
+    A.grender.stopReplay(true);
+    renderTab(tab);
     A.render.chrome();
-    if (tab === 'stats') A.render.stats();
     var nv = currentView();
     if (nv) nv.scrollTop = ui.scroll[tab] || 0;
+    saveUi();
+  }
+
+  function setTaskPane(pane) {
+    if (pane === A.taskPane) return;
+    A.taskPane = pane;
+    ui.taskPane = pane;
+    A.gestures.closeOpen(false);
+    A.render.chrome();
+    saveUi();
+  }
+
+  function setBagPane(pane) {
+    ui.bagPane = pane;
+    A.$$('#seg-bag button').forEach(function (b) {
+      b.setAttribute('aria-pressed', b.dataset.pane === pane ? 'true' : 'false');
+    });
+    A.$('#pane-owned').hidden = pane !== 'owned';
+    A.$('#pane-dex').hidden = pane !== 'dex';
+    renderTab('bag');
     saveUi();
   }
 
@@ -117,6 +168,16 @@
 
   var UNIT_WORD = { day: '天', week: '週', month: '個月', year: '年' };
   var sheetUnit = 'day';
+  var sheetDifficulty = 1;
+
+  function applyDifficultyUi() {
+    A.$$('#seg-difficulty button').forEach(function (b) {
+      b.setAttribute('aria-pressed', Number(b.dataset.diff) === sheetDifficulty ? 'true' : 'false');
+    });
+    /* 提示每難度對應的寶石（對照表在遊戲層，todo 只顯示） */
+    var gems = A.gc.coinsFor(sheetType, sheetDifficulty);
+    A.$('#diff-hint').textContent = '完成一次獲得 💎' + gems;
+  }
 
   function sheetRepeatPreview() {
     return {
@@ -153,6 +214,7 @@
     A.$('#group-type').hidden = !!task;              /* 既有任務不改類型 */
     input.value = task ? task.title : '';
     A.$('#input-note').value = task ? (task.note || '') : '';
+    sheetDifficulty = task ? (task.difficulty || 1) : 1;   /* 預設最低（SPEC §4.1a） */
 
     var r = task && task.type === 'daily' ? A.repeatRule(task) : { unit: 'day', interval: 1 };
     sheetUnit = r.unit;
@@ -161,6 +223,7 @@
 
     applySheetType();
     applyRepeatUi();
+    applyDifficultyUi();
 
     openSheet(sheet);
     input.focus();
@@ -171,6 +234,7 @@
     return {
       title: A.$('#input-title').value.trim(),
       note: A.$('#input-note').value.trim(),
+      difficulty: sheetDifficulty,
       start_date: A.$('#input-start').value || A.logicalToday(),
       unit: sheetUnit,
       interval: Math.min(99, Math.max(1, Math.round(Number(A.$('#input-interval').value) || 1)))
@@ -186,7 +250,8 @@
       if (t) A.render.list(t.type, { animate: true });
     } else {
       var nt = A.addTask(sheetType, fields);
-      if (A.tab !== nt.type) setTab(nt.type);
+      if (A.tab !== 'tasks') setTab('tasks');
+      if (A.taskPane !== nt.type) setTaskPane(nt.type);
       A.render.list(nt.type, { animate: true });
       if (nt.type === 'daily' && !A.dueToday(nt)) {
         A.toast('已新增，下次到期 ' + A.nextDueAfter(nt, A.logicalToday()));
@@ -525,8 +590,115 @@
       b.addEventListener('click', function () { setTab(b.dataset.tab); });
     });
 
+    A.$('#seg-tasks').addEventListener('click', function (e) {
+      var b = e.target.closest('button');
+      if (b) setTaskPane(b.dataset.pane);
+    });
+    A.$('#seg-bag').addEventListener('click', function (e) {
+      var b = e.target.closest('button');
+      if (b) setBagPane(b.dataset.pane);
+    });
+
     A.$('#btn-edit').addEventListener('click', function () {
       setMode(A.mode === 'edit' ? 'normal' : 'edit');
+    });
+
+    /* ---------- 對戰 ---------- */
+    A.$('#btn-fight').addEventListener('click', function () {
+      var result = A.farm.battleOnce(null, { manual: true });
+      A.grender.playResult(result, { done: function () { A.grender.battle(); } });
+      A.grender.battle();
+    });
+    A.$('#btn-auto').addEventListener('click', function () {
+      A.farm.setAuto(!A.game.stage.auto_farming);
+    });
+    A.$('#btn-skip').addEventListener('click', function () {
+      A.grender.stopReplay(true);
+      A.grender.battle();
+    });
+    A.$('#btn-claim').addEventListener('click', function () {
+      var got = A.farm.claim();
+      if (!got) { A.toast('目前沒有待領的獎勵'); return; }
+      A.grender.battle();
+      A.toast('領取 🔧' + A.gc.fmt(got.material) + '　🪙' + A.gc.fmt(got.gold));
+    });
+    A.farm.onChange = function () {
+      if (A.tab === 'battle') A.grender.battle();
+      else A.grender.resources();
+    };
+    A.farm.onBattle = function (result) {
+      if (A.tab === 'battle') A.grender.playResult(result, { instant: true });
+    };
+
+    /* ---------- 抽卡 ---------- */
+    var gachaSheet = A.$('#sheet-gacha');
+    A.$('#btn-gacha-open').addEventListener('click', function () {
+      A.grender.gacha();
+      A.$('#pull-result').textContent = '';
+      openSheet(gachaSheet);
+    });
+    gachaSheet.addEventListener('click', function (e) {
+      if (e.target.dataset && e.target.dataset.act === 'close') closeSheet(gachaSheet);
+    });
+    function doPulls(n) {
+      var results = [];
+      for (var i = 0; i < n; i++) {
+        var r = A.gacha.pull('general');
+        if (r.error) { if (!results.length) A.toast(r.error); break; }
+        results.push(r);
+      }
+      if (results.length) {
+        A.grender.showPulls(results);
+        A.grender.gacha();
+        A.grender.resources();
+      }
+    }
+    A.$('#btn-pull-1').addEventListener('click', function () { doPulls(1); });
+    A.$('#btn-pull-10').addEventListener('click', function () { doPulls(10); });
+
+    /* ---------- 背包 ---------- */
+    A.$('#pane-owned').addEventListener('click', function (e) {
+      var btn = e.target.closest('button[data-act]');
+      if (!btn || btn.disabled) return;
+      var id = btn.dataset.id;
+      var r;
+      if (btn.dataset.act === 'equip') r = A.gacha.equip(id);
+      else if (btn.dataset.act === 'unequip') r = A.gacha.unequip(id);
+      else if (btn.dataset.act === 'upgrade') {
+        r = A.gacha.upgrade(id);
+        if (r && r.level) A.toast('強化成功　Lv ' + r.level + '/' + r.cap);
+      }
+      if (r && r.error) { A.toast(r.error); return; }
+      A.grender.owned();
+      A.grender.resources();
+    });
+
+    A.$('#pane-dex').addEventListener('click', function (e) {
+      var typeBtn = e.target.closest('button[data-filter-type]');
+      if (typeBtn) {
+        A.grender.dexState.type = typeBtn.dataset.filterType;
+        A.grender.dexState.selected = null;
+        A.grender.dex();
+        return;
+      }
+      var cell = e.target.closest('.dex-cell');
+      if (cell) {
+        A.grender.dexState.selected = cell.dataset.id;
+        A.grender.dexGrid();
+      }
+    });
+    A.$('#pane-dex').addEventListener('change', function (e) {
+      var d = A.grender.dexState;
+      if (e.target.id === 'dex-tag') d.tag = e.target.value;
+      else if (e.target.id === 'dex-rarity') d.rarity = e.target.value;
+      else if (e.target.id === 'dex-sort') d.sort = e.target.value;
+      else return;
+      A.grender.dexGrid();
+    });
+    A.$('#pane-dex').addEventListener('input', function (e) {
+      if (e.target.id !== 'dex-q') return;
+      A.grender.dexState.q = e.target.value.trim();
+      A.grender.dexGrid();
     });
 
     A.$('#fab').addEventListener('click', function () { A.openTaskSheet(null); });
@@ -552,6 +724,13 @@
       if (!b) return;
       sheetType = b.dataset.type;
       applySheetType();
+      applyDifficultyUi();
+    });
+    A.$('#seg-difficulty').addEventListener('click', function (e) {
+      var b = e.target.closest('button');
+      if (!b) return;
+      sheetDifficulty = Number(b.dataset.diff);
+      applyDifficultyUi();
     });
     A.$('#seg-repeat').addEventListener('click', function (e) {
       var b = e.target.closest('button');
@@ -632,11 +811,11 @@
     /* 手勢 */
     ['daily', 'general'].forEach(function (type) {
       A.gestures.attach(A.render.els.lists[type]);
-      A.gestures.attachScrollClose(A.render.els.views[type]);
     });
+    A.gestures.attachScrollClose(A.render.els.views.tasks);
 
     /* 捲動位置記憶 */
-    ['daily', 'general', 'stats'].forEach(function (k) {
+    Object.keys(A.render.els.views).forEach(function (k) {
       A.render.els.views[k].addEventListener('scroll', function () {
         ui.scroll[k] = A.render.els.views[k].scrollTop;
         saveUi();
@@ -645,6 +824,11 @@
 
     /* 同步狀態 */
     A.sync.onChange = renderSyncStatus;
+    A.sync.onGamePull = function () {
+      A.grender.resources();
+      renderTab(A.tab);
+      A.toast('遊戲進度已從雲端備份更新');
+    };
     A.sync.onPull = function () {
       lastLogical = A.logicalToday();
       A.render.all({ animate: true });
@@ -661,11 +845,17 @@
       checkDate();
       A.sync.retryIfPending();
       pollVersion();
+      var fought = A.farm.catchUp();
+      if (fought > 0) A.toast('自動刷關進行了 ' + fought + ' 場');
     });
     window.addEventListener('focus', checkDate);
     window.addEventListener('pageshow', checkDate);
     window.addEventListener('online', function () { A.sync.retryIfPending(); });
-    window.addEventListener('pagehide', function () { A.writeUiState(ui); });
+    window.addEventListener('pagehide', function () {
+      A.writeUiState(ui);
+      /* 記下最後刷關時間，回來時 catchUp 會補算 */
+      if (A.game && A.game.stage.auto_farming) A.gstore.save({ bump: false });
+    });
 
     /* 卡片以外的按壓回饋 */
     A.$$('.tab').forEach(function (b) {
@@ -685,20 +875,26 @@
       navigator.serviceWorker.addEventListener('message', onSwMessage);
     }
 
-    /* 階段一：同步讀 mirror，立刻畫出完整清單 */
-    ui = A.readUiState();
+    /* 階段一：同步讀 mirror，立刻畫出完整清單與資源列（SPEC §9.1、GAME_SPEC §4b.3） */
+    ui = migrateUi(A.readUiState());
     A.tab = ui.tab;
+    A.taskPane = ui.taskPane;
     var mirror = A.readMirror();
     A.state = mirror || A.defaultState();
+    var gameMirror = A.gstore.readMirror();
+    A.game = gameMirror || A.gstore.defaultState();
     lastLogical = A.logicalToday();
     A.render.all({ animate: false });
+    A.grender.resources();
+    setBagPane(ui.bagPane);
+    renderTab(A.tab);
     restoreScroll();
 
     wire();
     VP.watch();
 
     /* 階段二：非同步讀 IndexedDB，不一致才重繪 */
-    A.idbLoad().then(function (rec) {
+    var todoReady = A.idbLoad().then(function (rec) {
       var stored = rec ? A.normalizeState(rec) : null;
       if (!stored) {
         if (mirror) A.queueIdbWrite();          /* 把 mirror 補回主資料 */
@@ -711,7 +907,27 @@
       }
     }).catch(function (e) {
       console.warn('IndexedDB 讀取失敗，使用 mirror', e);
+    });
+
+    var gameReady = A.gstore.idbLoad().then(function (rec) {
+      var stored = rec ? A.gstore.normalize(rec) : null;
+      if (!stored) {
+        if (gameMirror) A.gstore.save({ bump: false });
+      } else if (JSON.stringify(stored) !== JSON.stringify(A.game)) {
+        A.game = stored;
+        A.gstore.writeMirror(A.game);
+        A.grender.resources();
+        renderTab(A.tab);
+      }
+    }).catch(function (e) {
+      console.warn('game_data 讀取失敗，使用 mirror', e);
     }).then(function () {
+      /* 離線期間的自動刷關補算 + 啟動計時器 */
+      A.farm.catchUp();
+      if (A.game.stage.auto_farming) A.farm.setAuto(true);
+    });
+
+    Promise.all([todoReady, gameReady]).then(function () {
       /* 階段三：背景同步 */
       renderSyncStatus();
       setTimeout(function () { A.sync.startup(); }, 0);

@@ -706,3 +706,331 @@ textarea.input {
 }
 .btn.is-compact { padding: 0 var(--sp-4); font-size: var(--fs-1); }
 .btn.on-surface-2 { background: var(--c-bg); }
+
+
+/* ==========================================================================
+   遊戲層（GAME_SPEC §4b）
+   ========================================================================== */
+
+/* ---------- 常駐資源列 ---------- */
+.res-bar {
+  flex: 0 0 auto;
+  display: flex;
+  align-items: center;
+  gap: var(--sp-3);
+  height: calc(var(--res-bar-h) + env(safe-area-inset-top));
+  padding: env(safe-area-inset-top) var(--sp-4) 0;
+  background: var(--c-bg);
+  font-size: var(--fs-2);
+  font-weight: var(--fw-bold);
+  font-variant-numeric: tabular-nums;
+}
+.res-item { display: inline-flex; align-items: center; gap: var(--sp-1); }
+.res-item .res-num { color: var(--c-ink); }
+.res-spacer { flex: 1 1 auto; }
+.res-claim-dot {
+  width: var(--sp-2);
+  height: var(--sp-2);
+  border-radius: var(--r-pill);
+  background: var(--c-accent);
+}
+.res-claim-dot[hidden] { display: none; }
+
+/* ---------- 任務分頁的子列（分段 + 編輯鈕） ---------- */
+.sub-head {
+  display: flex;
+  align-items: center;
+  gap: var(--sp-3);
+  margin-bottom: var(--sp-3);
+}
+.sub-head .seg { flex: 1 1 auto; }
+.pane[hidden] { display: none; }
+
+/* ---------- 對戰 ---------- */
+.stage-line {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  margin-bottom: var(--sp-3);
+  font-size: var(--fs-2);
+  font-weight: var(--fw-bold);
+}
+.stage-line .stage-max { color: var(--c-ink-2); font-size: var(--fs-1); }
+
+.battle-box {
+  background: var(--c-surface);
+  border-radius: var(--r-md);
+  padding: var(--sp-4);
+  margin-bottom: var(--sp-3);
+}
+.battle-units {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: var(--sp-4);
+}
+.unit {
+  flex: 1 1 0;
+  min-width: 0;
+  text-align: center;
+}
+.unit-icon { font-size: var(--battle-icon); line-height: 1.2; }
+.unit-name {
+  font-size: var(--fs-1);
+  font-weight: var(--fw-bold);
+  overflow-wrap: anywhere;
+}
+.unit-traits {
+  min-height: calc(var(--fs-1) * var(--lh));
+  font-size: var(--fs-1);
+  color: var(--c-ink-2);
+}
+.vs { flex: 0 0 auto; align-self: center; font-weight: var(--fw-bold); color: var(--c-ink-2); }
+
+.hp-wrap { margin-top: var(--sp-2); }
+.hp-track {
+  height: var(--hp-bar-h);
+  border-radius: var(--r-pill);
+  background: var(--c-hp-track);
+  overflow: hidden;
+  position: relative;
+}
+.hp-fill {
+  position: absolute;
+  inset: 0 auto 0 0;
+  width: 100%;
+  border-radius: var(--r-pill);
+  transition: width var(--dur-fast) linear;
+}
+.unit.is-player .hp-fill { background: var(--c-hp-player); }
+.unit.is-monster .hp-fill { background: var(--c-hp-monster); }
+.shield-fill {
+  position: absolute;
+  inset: 0 auto 0 0;
+  width: 0;
+  border-radius: var(--r-pill);
+  background: var(--c-hp-shield);
+  opacity: 1;
+}
+.hp-num {
+  margin-top: var(--sp-1);
+  font-size: var(--fs-1);
+  color: var(--c-ink-2);
+  font-variant-numeric: tabular-nums;
+}
+
+.battle-log {
+  height: calc(var(--fs-1) * var(--lh) * 6);
+  overflow-y: auto;
+  margin-top: var(--sp-3);
+  padding: var(--sp-2) var(--sp-3);
+  background: var(--c-bg);
+  border-radius: var(--r-sm);
+  font-size: var(--fs-1);
+  color: var(--c-ink-2);
+}
+.battle-log .log-win { color: var(--c-hp-player); font-weight: var(--fw-bold); }
+.battle-log .log-lose { color: var(--c-hp-monster); font-weight: var(--fw-bold); }
+
+.battle-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--sp-2);
+  margin-bottom: var(--sp-3);
+}
+.battle-actions .btn { flex: 1 1 auto; }
+.btn.is-on { background: var(--c-accent); color: var(--c-on-accent); }
+
+.pending-box {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--sp-3);
+  background: var(--c-surface);
+  border-radius: var(--r-md);
+  padding: var(--sp-3) var(--sp-4);
+  margin-bottom: var(--sp-3);
+  font-size: var(--fs-2);
+  font-variant-numeric: tabular-nums;
+}
+.pending-box .pending-nums { color: var(--c-ink-2); font-size: var(--fs-1); }
+
+.gacha-entry {
+  width: 100%;
+  min-height: calc(var(--hit-min) + var(--sp-3));
+  border-radius: var(--r-md);
+  background: var(--c-modal);
+  color: var(--c-on-modal);
+  font-size: var(--fs-3);
+  font-weight: var(--fw-bold);
+}
+.gacha-entry:active { transform: scale(var(--press-scale)); }
+
+/* ---------- 抽卡 ---------- */
+.pity-line {
+  display: flex;
+  gap: var(--sp-4);
+  font-size: var(--fs-1);
+  color: var(--c-ink-2);
+  font-variant-numeric: tabular-nums;
+}
+.pull-result {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--sp-2);
+  margin-top: var(--sp-4);
+}
+.pull-card {
+  flex: 0 0 calc(20% - var(--sp-2));
+  min-width: var(--dex-cell-min);
+  background: var(--c-surface);
+  border-radius: var(--r-sm);
+  padding: var(--sp-2);
+  text-align: center;
+}
+.pull-card .pc-icon { font-size: var(--fs-5); }
+.pull-card .pc-name { font-size: var(--fs-1); font-weight: var(--fw-bold); overflow-wrap: anywhere; }
+.pull-card .pc-tag { font-size: var(--fs-1); color: var(--c-ink-2); }
+.pull-card.is-new .pc-tag { color: var(--c-accent); font-weight: var(--fw-bold); }
+.rar-common   { color: var(--c-rar-common); }
+.rar-uncommon { color: var(--c-rar-uncommon); }
+.rar-rare     { color: var(--c-rar-rare); }
+.rar-mythic   { color: var(--c-rar-mythic); }
+
+/* ---------- 背包：擁有 ---------- */
+.equip-summary {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--sp-2);
+  margin-bottom: var(--sp-3);
+}
+.equip-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--sp-1);
+  padding: var(--sp-1) var(--sp-3);
+  border-radius: var(--r-pill);
+  background: var(--c-surface);
+  font-size: var(--fs-1);
+}
+.equip-chip .ec-empty { color: var(--c-ink-2); }
+
+.item-row {
+  display: flex;
+  align-items: center;
+  gap: var(--sp-3);
+  background: var(--c-surface);
+  border-radius: var(--r-md);
+  padding: var(--sp-3) var(--sp-4);
+  margin-bottom: var(--sp-2);
+}
+.item-icon { flex: 0 0 auto; font-size: var(--fs-5); line-height: 1; }
+.item-main { flex: 1 1 auto; min-width: 0; }
+.item-name { font-size: var(--fs-2); font-weight: var(--fw-bold); overflow-wrap: anywhere; }
+.item-sub {
+  font-size: var(--fs-1);
+  color: var(--c-ink-2);
+  font-variant-numeric: tabular-nums;
+}
+.item-desc { font-size: var(--fs-1); color: var(--c-ink-2); margin-top: var(--sp-1); }
+.item-actions {
+  flex: 0 0 auto;
+  display: flex;
+  flex-direction: column;
+  gap: var(--sp-2);
+  align-items: stretch;
+}
+.item-actions .btn { min-height: calc(var(--hit-min) - var(--sp-2)); padding: 0 var(--sp-3); font-size: var(--fs-1); }
+.item-row.is-equipped { background: var(--c-surface-2); }
+.equip-mark { color: var(--c-accent); font-weight: var(--fw-bold); }
+
+/* ---------- 背包：圖鑑 ---------- */
+.dex-filters {
+  display: flex;
+  flex-direction: column;
+  gap: var(--sp-2);
+  margin-bottom: var(--sp-3);
+}
+.dex-filters .filter-row { display: flex; gap: var(--sp-2); }
+.dex-filters .filter-row > * { flex: 1 1 0; min-width: 0; }
+
+.dex-grid {
+  display: grid;
+  grid-template-columns: repeat(4, 1fr);   /* §3b.1：iPhone 上 4 欄 */
+  gap: var(--sp-2);
+}
+.dex-cell {
+  position: relative;
+  background: var(--c-surface);
+  border-radius: var(--r-sm);
+  padding: var(--sp-2) var(--sp-1);
+  text-align: center;
+  cursor: pointer;
+}
+.dex-cell:active { transform: scale(var(--press-scale)); }
+.dex-cell .dx-icon { font-size: var(--fs-5); line-height: 1.3; }
+.dex-cell.is-unowned .dx-icon { filter: grayscale(1); opacity: 0.45; }
+.dex-cell .dx-rar {
+  position: absolute;
+  top: var(--sp-1);
+  left: var(--sp-1);
+  font-size: var(--fs-1);
+  font-weight: var(--fw-bold);
+}
+.dex-cell .dx-id {
+  margin-top: var(--sp-1);
+  font-size: var(--fs-1);
+  color: var(--c-ink-2);
+  font-family: var(--font-mono);
+}
+.dex-cell.is-selected { background: var(--c-surface-2); }
+
+.dex-detail {
+  display: flex;
+  gap: var(--sp-4);
+  background: var(--c-surface);
+  border-radius: var(--r-md);
+  padding: var(--sp-4);
+  margin-top: var(--sp-3);
+}
+.dex-detail[hidden] { display: none; }
+.dex-detail .dd-icon { font-size: calc(var(--fs-5) * 2); line-height: 1; }
+.dex-detail.is-unowned .dd-icon { filter: grayscale(1); opacity: 0.45; }
+.dex-detail .dd-main { flex: 1 1 auto; min-width: 0; }
+.dex-detail .dd-name { font-weight: var(--fw-bold); }
+.dex-detail .dd-sub { font-size: var(--fs-1); color: var(--c-ink-2); margin-top: var(--sp-1); }
+.dex-detail .dd-desc { font-size: var(--fs-1); margin-top: var(--sp-2); }
+
+/* ---------- 難度選擇器（SPEC §4.1a） ---------- */
+.diff-seg {
+  display: grid;
+  grid-auto-flow: column;
+  grid-auto-columns: 1fr;
+  gap: var(--sp-2);
+}
+.diff-seg > button {
+  min-height: var(--hit-min);
+  border-radius: var(--r-sm);
+  background: var(--c-bg);
+  color: var(--c-ink);
+  font-size: var(--fs-2);
+  font-weight: var(--fw-bold);
+}
+.diff-seg > button[aria-pressed="true"] { background: var(--c-accent); color: var(--c-on-accent); }
+
+/* ---------- 統計：遊戲區塊 ---------- */
+.gstat-grid {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: var(--sp-2);
+}
+.gstat-item {
+  background: var(--c-surface);
+  border-radius: var(--r-md);
+  padding: var(--sp-3) var(--sp-4);
+}
+.gstat-num { font-size: var(--fs-4); font-weight: var(--fw-bold); font-variant-numeric: tabular-nums; }
+.gstat-label { font-size: var(--fs-1); color: var(--c-ink-2); }
+
+/* display 宣告會蓋過 hidden 屬性，明確補回 */
+.btn[hidden], .btn-pill[hidden], .gacha-entry[hidden] { display: none; }

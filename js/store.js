@@ -3,7 +3,7 @@
 (function (A) {
   'use strict';
 
-  A.SCHEMA_VERSION = 2;
+  A.SCHEMA_VERSION = 3;
 
   A.LSK = {
     token:  'gist_token',
@@ -75,7 +75,13 @@
                                                      : (index + 1) * 1000,
       created_at: typeof raw.created_at === 'string' ? raw.created_at : A.nowIso(),
       /* 軟刪除標記。改版前的備份沒有這個欄位，一律視為未刪除，不得報錯。 */
-      deleted_at: typeof raw.deleted_at === 'string' && raw.deleted_at ? raw.deleted_at : null
+      deleted_at: typeof raw.deleted_at === 'string' && raw.deleted_at ? raw.deleted_at : null,
+      /* 難度 1–5（SPEC §1.2）：todo 本身不用它做任何計算，純儲存與顯示；
+         換算成寶石的對照表只存在於遊戲層（GAME_SPEC §0.3）。 */
+      difficulty: (function () {
+        var d = Math.round(Number(raw.difficulty));
+        return isFinite(d) && d >= 1 && d <= 5 ? d : 1;
+      })()
     };
 
     if (type === 'daily') {
@@ -148,7 +154,10 @@
   };
 
   /* ---------- IndexedDB ---------- */
-  var DB_NAME = 'daily-tick', DB_VER = 1, STORE = 'state', KEY = 'app';
+  /* DB v2：新增遊戲層的 'game_data' store（GAME_SPEC §0.2）。
+     todo 主資料沿用既有的 'state' store —— 規格稱之為 todo_data，
+     但改名需搬移使用者既有資料且零收益，故保留原名（見 README 取捨）。 */
+  var DB_NAME = 'daily-tick', DB_VER = 2, STORE = 'state', KEY = 'app';
   var dbPromise = null;
 
   A.openDB = function () {
@@ -159,6 +168,7 @@
       req.onupgradeneeded = function () {
         var db = req.result;
         if (!db.objectStoreNames.contains(STORE)) db.createObjectStore(STORE);
+        if (!db.objectStoreNames.contains('game_data')) db.createObjectStore('game_data');
       };
       req.onsuccess = function () { resolve(req.result); };
       req.onerror = function () { reject(req.error); };
@@ -219,8 +229,10 @@
   };
 
   /* ---------- ui_state（分頁與捲動位置，SPEC §9.2） ---------- */
+  /* 預設啟動於「任務」tab（GAME_SPEC §4b.3：設計立場——工具不被遊戲劫持） */
   A.defaultUi = function () {
-    return { tab: 'daily', scroll: { daily: 0, general: 0, stats: 0 } };
+    return { tab: 'tasks', taskPane: 'daily', bagPane: 'owned',
+             scroll: { battle: 0, bag: 0, tasks: 0, stats: 0 } };
   };
 
   A.readUiState = function () {
@@ -229,9 +241,11 @@
     if (!raw) return ui;
     try {
       var o = JSON.parse(raw);
-      if (o && (o.tab === 'daily' || o.tab === 'general' || o.tab === 'stats')) ui.tab = o.tab;
+      if (o && typeof o.tab === 'string') ui.tab = o.tab;             /* 遷移交給 main.js */
+      if (o && typeof o.taskPane === 'string') ui.taskPane = o.taskPane;
+      if (o && typeof o.bagPane === 'string') ui.bagPane = o.bagPane;
       if (o && o.scroll) {
-        ['daily', 'general', 'stats'].forEach(function (k) {
+        Object.keys(ui.scroll).forEach(function (k) {
           var v = Number(o.scroll[k]);
           if (isFinite(v) && v >= 0) ui.scroll[k] = v;
         });

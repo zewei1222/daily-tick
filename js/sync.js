@@ -3,6 +3,7 @@
   'use strict';
 
   var FILENAME = 'todo-backup.json';
+  var FILENAME_GAME = 'game-backup.json';   /* 同一個 gist 的第二個檔案（GAME_SPEC §0.4） */
   var API = 'https://api.github.com';
   var PUSH_DEBOUNCE = 3000;
   var TIMEOUT = 15000;
@@ -83,7 +84,7 @@
   function findGistId() {
     return request('/gists?per_page=100').then(function (list) {
       var found = (list || []).filter(function (g) {
-        return g && g.files && g.files[FILENAME];
+        return g && g.files && (g.files[FILENAME] || g.files[FILENAME_GAME]);
       }).sort(function (a, b) {
         return Date.parse(b.updated_at || 0) - Date.parse(a.updated_at || 0);
       })[0];
@@ -98,28 +99,44 @@
   }
   S.payload = payload;
 
+  function gamePayload() {
+    return A.game ? JSON.stringify(A.game, null, 2) : null;
+  }
+
+  function fileText(g, name) {
+    var f = g && g.files && g.files[name];
+    if (!f) return Promise.resolve(null);
+    if (f.truncated && f.raw_url) {
+      return fetch(f.raw_url).then(function (r) { return r.text(); });
+    }
+    return Promise.resolve(f.content);
+  }
+
+  /* 回傳 { todo, game }（各自可為 null） */
   function readGist(id) {
     return request('/gists/' + id).then(function (g) {
-      var f = g && g.files && g.files[FILENAME];
-      if (!f) return null;
-      if (f.truncated && f.raw_url) {
-        return fetch(f.raw_url).then(function (r) { return r.text(); });
+      return Promise.all([fileText(g, FILENAME), fileText(g, FILENAME_GAME)]);
+    }).then(function (texts) {
+      var todo = null, game = null;
+      if (texts[0]) {
+        var r1 = A.parsePayload(texts[0]);
+        if (r1.ok) todo = r1.state;
+        else console.warn('遠端 todo 備份無法解析：' + r1.error);
       }
-      return f.content;
-    }).then(function (text) {
-      if (!text) return null;
-      var res = A.parsePayload(text);
-      if (!res.ok) {
-        console.warn('遠端備份格式無法解析：' + res.error);
-        return null;
+      if (texts[1] && A.gstore) {
+        var r2 = A.gstore.parsePayload(texts[1]);
+        if (r2.ok) game = r2.state;
+        else console.warn('遠端遊戲備份無法解析：' + r2.error);
       }
-      return res.state;
+      return { todo: todo, game: game };
     });
   }
 
   function writeGist(id) {
     var files = {};
     files[FILENAME] = { content: payload() };
+    var gp = gamePayload();
+    if (gp) files[FILENAME_GAME] = { content: gp };
     if (id) {
       return request('/gists/' + id, { method: 'PATCH', body: { files: files } })
         .then(function () { return id; });
@@ -135,6 +152,23 @@
     if (!remote) return 'push';
     /* 硬規則：本機 0 筆而遠端有資料 → 一律拉回，永不上傳覆蓋 */
     if (local.tasks.length === 0 && remote.tasks.length > 0) return 'pull';
+    var lt = Date.parse(local.updated_at) || 0;
+    var rt = Date.parse(remote.updated_at) || 0;
+    if (rt > lt) return 'pull';
+    if (lt > rt) return 'push';
+    return 'noop';
+  };
+
+  /* 遊戲層決策（GAME_SPEC §0.4）：沿用同一組規則，含硬規則。
+     「本機為空」的定義：從未有任何貨幣事件、也從未抽過卡、也沒打過任何層。 */
+  A.gameIsEmpty = function (g) {
+    return g.events.length === 0 && g.pulls.total === 0 && g.stage.highest_stage === 0;
+  };
+
+  A.gameSyncDecision = function (local, remote) {
+    /* 遠端沒有遊戲檔且本機也全新：沒有東西值得上傳，不要為此打 API */
+    if (!remote) return A.gameIsEmpty(local) ? 'noop' : 'push';
+    if (A.gameIsEmpty(local) && !A.gameIsEmpty(remote)) return 'pull';
     var lt = Date.parse(local.updated_at) || 0;
     var rt = Date.parse(remote.updated_at) || 0;
     if (rt > lt) return 'pull';
@@ -182,13 +216,16 @@
     });
   }
 
-  function doPull(remote) {
+  function doPullTodo(remote) {
     A.state = remote;                       /* 已由 parsePayload 正規化 */
     A.save({ bump: false, sync: false });   /* 保留遠端 updated_at */
-    A.ls.set(A.LSK.synced, A.nowIso());
-    S.pendingPush = false;
-    setStatus('synced', '');
     if (S.onPull) S.onPull();
+  }
+
+  function doPullGame(remote) {
+    A.game = remote;
+    if (A.gstore) A.gstore.save({ bump: false });
+    if (S.onGamePull) S.onGamePull();
   }
 
   /* 任何資料變動 → debounce 3 秒後推上去 */
@@ -201,6 +238,19 @@
     if (!S.token()) { setStatus('unset', ''); return; }
     S.pendingPush = true;
     debounced();
+  };
+
+  /* 遊戲層：僅里程碑事件觸發，debounce 10 秒（GAME_SPEC §0.4）。
+     上傳動作與 todo 共用（一次 PATCH 兩個檔案）。 */
+  var debouncedGame = A.debounce(function () {
+    if (!S.token()) return;
+    serial(function () { return doPush(); });
+  }, (A.gc && A.gc.CONST.SYNC_DEBOUNCE_MS) || 10000);
+
+  S.scheduleGamePush = function () {
+    if (!S.token()) return;
+    S.pendingPush = true;
+    debouncedGame();
   };
 
   S.pushNow = function () {
@@ -219,15 +269,27 @@
                                      return id;
                                    });
       return idPromise.then(function (id) {
-        return (id ? readGist(id) : Promise.resolve(null)).then(function (remote) {
-          var decision = A.syncDecision(A.state, remote);
-          if (decision === 'pull') { doPull(remote); return; }
-          if (decision === 'push') return doPush();
-          markSynced();
-        }, function (err) {
-          if (err && err.kind === 'notfound') { A.ls.del(A.LSK.gistId); return doPush(); }
-          return Promise.reject(err);
-        });
+        return (id ? readGist(id) : Promise.resolve({ todo: null, game: null }))
+          .then(function (remote) {
+            var todoDecision = A.syncDecision(A.state, remote.todo);
+            var gameDecision = A.game ? A.gameSyncDecision(A.game, remote.game) : 'noop';
+
+            if (todoDecision === 'pull') doPullTodo(remote.todo);
+            if (gameDecision === 'pull') doPullGame(remote.game);
+
+            /* 任一份需要上傳就推一次（writeGist 一次寫兩個檔案） */
+            if (todoDecision === 'push' || gameDecision === 'push') return doPush();
+            if (todoDecision === 'pull' || gameDecision === 'pull') {
+              A.ls.set(A.LSK.synced, A.nowIso());
+              S.pendingPush = false;
+              setStatus('synced', '');
+              return;
+            }
+            markSynced();
+          }, function (err) {
+            if (err && err.kind === 'notfound') { A.ls.del(A.LSK.gistId); return doPush(); }
+            return Promise.reject(err);
+          });
       });
     }).catch(handleError);
   };

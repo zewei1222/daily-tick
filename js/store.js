@@ -10,7 +10,8 @@
     gistId: 'gist_id',
     synced: 'last_synced_at',
     mirror: 'mirror',
-    ui:     'ui_state'
+    ui:     'ui_state',
+    kb:     'kb_height'     /* 量到的鍵盤高度，用來預先縮好 sheet（見 main.js） */
   };
 
   /* ---------- localStorage 包一層，避免無痕模式丟例外 ---------- */

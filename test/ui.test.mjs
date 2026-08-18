@@ -478,19 +478,35 @@ group('I2 鍵盤與可視區域');
   const atOpen = await page.$eval('#sheet-task', s => {
     const cs = getComputedStyle(s);
     const r = s.getBoundingClientRect();
-    return { transform: cs.transform, top: Math.round(r.top) };
+    return { transform: cs.transform, top: Math.round(r.top), h: Math.round(r.height) };
   });
-  eq('開啟第一帧就在最終位置、無位移動畫', atOpen, { transform: 'none', top: 0 });
+  eq('開啟第一帧就在最終位置、無位移動畫',
+     { transform: atOpen.transform, top: atOpen.top }, { transform: 'none', top: 0 });
+  ok('focus 當下就預先為鍵盤縮好高度（不等鍵盤動畫）',
+     atOpen.h > 300 && atOpen.h < 852 - 200, atOpen);
   eq('輸入框在開啟瞬間已可見', await page.$eval('#input-title', i => {
     const r = i.getBoundingClientRect();
-    return r.top > 0 && r.bottom < 452;      /* 鍵盤彈出後的可視高度內 */
+    return r.top > 0 && r.bottom < 452;
   }), true);
 
+  /* 鍵盤動畫期間鎖住不追事件；到期後量真值（headless 無鍵盤 → 回滿高） */
+  await page.evaluate(() => window.visualViewport.dispatchEvent(new Event('scroll')));
+  await sleep(60);
+  eq('動畫期間不因 viewport 事件改變幾何',
+     await page.$eval('#sheet-task', s => Math.round(s.getBoundingClientRect().height)), atOpen.h);
+  await sleep(500);
+  eq('鎖定到期後量測真值', await page.$eval('#sheet-task',
+     s => Math.round(s.getBoundingClientRect().height)), 852);
+
+  /* 記住的鍵盤高度會被用來精準預測（第二次之後全程零位移） */
+  await tapEl(page, '#sheet-task [data-act="cancel"]');
   await sleep(300);
-  const full = await page.$eval('#sheet-task', s => {
-    const r = s.getBoundingClientRect(); return { top: Math.round(r.top), h: Math.round(r.height) };
-  });
-  eq('sheet 預設佔滿可視高度', full, { top: 0, h: 852 });
+  await page.evaluate(() => localStorage.setItem('kb_height', '336'));
+  await tapEl(page, '#fab');
+  await sleep(30);
+  eq('用實測鍵盤高度預測 sheet 高度', await page.$eval('#sheet-task',
+     s => Math.round(s.getBoundingClientRect().height)), 852 - 336);
+  await sleep(500);
 
   /* 模擬鍵盤：visual viewport 縮小並下移 */
   await page.evaluate(() => {

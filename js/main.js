@@ -249,28 +249,81 @@
     if (A.tab === 'stats') A.render.stats();
   }
 
-  /* ================= 可視區域追蹤（SPEC §7.5） =================
-     鍵盤彈出時 iOS 會縮小 visual viewport，並可能把 layout viewport 往下捲。
-     Sheet 是 position:fixed，若不補償就會被推出畫面外，輸入框跟著看不見。
-     這裡把可視區域的位移與高度餵給 CSS，讓 sheet 永遠貼齊使用者真正看到的範圍。 */
-  function watchViewport() {
-    var vv = window.visualViewport;
+  /* ================= 可視區域與鍵盤（SPEC §7.5） =================
+     iOS 的 visualViewport 回報時機很差：resize 多半在鍵盤動畫「結束」才來，
+     scroll 卻在動畫「期間」零星地來。若跟著事件調整 sheet 幾何，就會在鍵盤
+     滑上來的過程中晃動，而且晃不晃取決於 iOS 當次要不要捲動可視區域。
+
+     作法：在 focus 的同一個 task 內，用記住的鍵盤高度「先」把 sheet 縮到鍵盤
+     上緣 —— 輸入框從一開始就在可視範圍內，iOS 沒有理由自己捲動；接著在動畫
+     期間鎖住不追任何事件，等鍵盤到位再量一次真值並記下來。第二次之後預測值
+     即為實測值，全程零位移。 */
+  var VP = (function () {
     var root = document.documentElement;
-    if (!vv) return;
+    var vv = window.visualViewport;
+    var KB_ANIM = 400;            /* iOS 鍵盤動畫約 250-350ms，留餘裕 */
+    var KB_GUESS_RATIO = 0.42;    /* 還沒量過時的估計值，之後會被實測取代 */
+    var MIN_KB = 100;             /* 小於此值不視為鍵盤 */
+    var lockUntil = 0;
+    var lockTimer = null;
     var queued = false;
-    var apply = function () {
+
+    function set(top, height) {
+      root.style.setProperty('--vv-top', Math.round(top) + 'px');
+      root.style.setProperty('--vv-h', Math.round(height) + 'px');
+    }
+
+    function remembered() {
+      var v = Number(A.ls.get(A.LSK.kb));
+      return isFinite(v) && v > MIN_KB ? v : 0;
+    }
+
+    function measure() {
+      if (!vv) { set(0, window.innerHeight); return; }
+      var kb = window.innerHeight - vv.height;
+      if (kb > MIN_KB) A.ls.set(A.LSK.kb, String(Math.round(kb)));
+      set(vv.offsetTop, vv.height);
+    }
+
+    function lock() {
+      lockUntil = Date.now() + KB_ANIM;
+      if (lockTimer) clearTimeout(lockTimer);
+      lockTimer = setTimeout(function () { lockTimer = null; measure(); }, KB_ANIM + 30);
+    }
+
+    function onChange() {
+      if (Date.now() < lockUntil) return;     /* 動畫期間不追 */
       if (queued) return;
       queued = true;
-      requestAnimationFrame(function () {
-        queued = false;
-        root.style.setProperty('--vv-top', vv.offsetTop + 'px');
-        root.style.setProperty('--vv-h', vv.height + 'px');
-      });
+      requestAnimationFrame(function () { queued = false; measure(); });
+    }
+
+    return {
+      watch: function () {
+        if (!vv) { set(0, window.innerHeight); return; }
+        vv.addEventListener('resize', onChange);
+        vv.addEventListener('scroll', onChange);
+        window.addEventListener('orientationchange', function () {
+          lockUntil = 0;
+          setTimeout(measure, 120);
+        });
+        measure();
+      },
+      /* 必須在 focus 的同一個 task 內呼叫 */
+      keyboardOpening: function () {
+        var kb = remembered() || Math.round(window.innerHeight * KB_GUESS_RATIO);
+        set(0, window.innerHeight - kb);
+        lock();
+      },
+      keyboardClosing: function () {
+        set(0, window.innerHeight);
+        lock();
+      }
     };
-    vv.addEventListener('resize', apply);
-    vv.addEventListener('scroll', apply);
-    window.addEventListener('orientationchange', function () { setTimeout(apply, 100); });
-    apply();
+  })();
+
+  function isTextField(el) {
+    return !!el && /^(INPUT|TEXTAREA|SELECT)$/.test(el.tagName);
   }
 
   /* 關閉 sheet 時收鍵盤，並把 iOS 可能留下的文件捲動歸零 */
@@ -366,6 +419,21 @@
     A.$('#btn-export-copy').addEventListener('click', copyExport);
     A.$('#btn-import').addEventListener('click', doImport);
 
+    /* 鍵盤：在 focus 的同一個 task 內就把 sheet 縮好 */
+    document.addEventListener('focusin', function (e) {
+      var t = e.target;
+      if (isTextField(t) && t.closest && t.closest('.sheet')) VP.keyboardOpening();
+    });
+    document.addEventListener('focusout', function (e) {
+      var t = e.target;
+      if (!isTextField(t) || !t.closest || !t.closest('.sheet')) return;
+      setTimeout(function () {
+        var a = document.activeElement;
+        if (isTextField(a) && a.closest && a.closest('.sheet')) return;   /* 換到另一個欄位 */
+        VP.keyboardClosing();
+      }, 60);
+    });
+
     /* 更新提示 */
     A.$('#btn-reload').addEventListener('click', function () { location.reload(); });
 
@@ -429,7 +497,7 @@
     restoreScroll();
 
     wire();
-    watchViewport();
+    VP.watch();
 
     /* 階段二：非同步讀 IndexedDB，不一致才重繪 */
     A.idbLoad().then(function (rec) {

@@ -250,27 +250,29 @@
   }
 
   /* ================= 可視區域與鍵盤（SPEC §7.5） =================
-     iOS 的 visualViewport 回報時機很差：resize 多半在鍵盤動畫「結束」才來，
-     scroll 卻在動畫「期間」零星地來。若跟著事件調整 sheet 幾何，就會在鍵盤
-     滑上來的過程中晃動，而且晃不晃取決於 iOS 當次要不要捲動可視區域。
+     iOS 的鍵盤是疊在畫面上的：layout viewport 不變，只有 visual viewport 縮小，
+     而且 visualViewport 的通報永遠慢一拍（resize 多在動畫結束才來，scroll 在
+     動畫期間零星地來）。用 JS 追著改 sheet 的幾何，必然在鍵盤滑上來的過程中
+     產生位移；而只要 sheet 的高度變小，下緣以下就會露出背後的清單，鍵盤再一路
+     蓋過去，看起來就是「畫面跟著晃」。
 
-     作法：在 focus 的同一個 task 內，用記住的鍵盤高度「先」把 sheet 縮到鍵盤
-     上緣 —— 輸入框從一開始就在可視範圍內，iOS 沒有理由自己捲動；接著在動畫
-     期間鎖住不追任何事件，等鍵盤到位再量一次真值並記下來。第二次之後預測值
-     即為實測值，全程零位移。 */
+     因此這裡的原則是：**sheet 的幾何完全不變**（永遠不透明全螢幕）。鍵盤高度只
+     餵給內容區的底部留白 --kb-h，改它不會讓畫面上任何東西移動，長內容也仍然
+     能捲到鍵盤上方。--vv-top 只是保險：極少數情況 iOS 仍會搬動可視區域，等鍵盤
+     靜止後才補償一次，動畫期間一律不動。 */
   var VP = (function () {
     var root = document.documentElement;
     var vv = window.visualViewport;
-    var KB_ANIM = 400;            /* iOS 鍵盤動畫約 250-350ms，留餘裕 */
-    var KB_GUESS_RATIO = 0.42;    /* 還沒量過時的估計值，之後會被實測取代 */
+    var KB_ANIM = 420;            /* iOS 鍵盤動畫約 250-350ms，留餘裕 */
+    var KB_GUESS_RATIO = 0.42;    /* 還沒量過時的估計值，之後由實測取代 */
     var MIN_KB = 100;             /* 小於此值不視為鍵盤 */
     var lockUntil = 0;
     var lockTimer = null;
     var queued = false;
 
-    function set(top, height) {
-      root.style.setProperty('--vv-top', Math.round(top) + 'px');
-      root.style.setProperty('--vv-h', Math.round(height) + 'px');
+    function set(kb, top) {
+      root.style.setProperty('--kb-h', Math.round(kb) + 'px');
+      root.style.setProperty('--vv-top', Math.round(top || 0) + 'px');
     }
 
     function remembered() {
@@ -279,10 +281,12 @@
     }
 
     function measure() {
-      if (!vv) { set(0, window.innerHeight); return; }
+      if (!vv) { set(0, 0); return; }
       var kb = window.innerHeight - vv.height;
-      if (kb > MIN_KB) A.ls.set(A.LSK.kb, String(Math.round(kb)));
-      set(vv.offsetTop, vv.height);
+      if (kb < MIN_KB) kb = 0;
+      else A.ls.set(A.LSK.kb, String(Math.round(kb)));
+      set(kb, vv.offsetTop);
+      if (window.scrollY || window.scrollX) window.scrollTo(0, 0);
     }
 
     function lock() {
@@ -292,7 +296,7 @@
     }
 
     function onChange() {
-      if (Date.now() < lockUntil) return;     /* 動畫期間不追 */
+      if (Date.now() < lockUntil) return;     /* 鍵盤動畫期間一律不動 */
       if (queued) return;
       queued = true;
       requestAnimationFrame(function () { queued = false; measure(); });
@@ -300,7 +304,7 @@
 
     return {
       watch: function () {
-        if (!vv) { set(0, window.innerHeight); return; }
+        if (!vv) { set(0, 0); return; }
         vv.addEventListener('resize', onChange);
         vv.addEventListener('scroll', onChange);
         window.addEventListener('orientationchange', function () {
@@ -309,14 +313,13 @@
         });
         measure();
       },
-      /* 必須在 focus 的同一個 task 內呼叫 */
+      /* 在 focus 的同一個 task 內呼叫：先把留白開好，讓 iOS 沒有捲動的理由 */
       keyboardOpening: function () {
-        var kb = remembered() || Math.round(window.innerHeight * KB_GUESS_RATIO);
-        set(0, window.innerHeight - kb);
+        set(remembered() || Math.round(window.innerHeight * KB_GUESS_RATIO), 0);
         lock();
       },
       keyboardClosing: function () {
-        set(0, window.innerHeight);
+        set(0, 0);
         lock();
       }
     };

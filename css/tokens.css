@@ -85,7 +85,9 @@
   --ease-out:   cubic-bezier(.2, .8, .3, 1);
   --ease-in-out: cubic-bezier(.4, 0, .2, 1);
 
-  /* ---- 執行期由 JS 覆寫：可視區域（visualViewport），見 §7.5 ---- */
+  /* ---- 執行期由 JS 覆寫（visualViewport），見 §7.5 ----
+     --kb-h  鍵盤高度，只用於內容區的底部留白
+     --vv-top 極少數情況下 iOS 仍搬動可視區域時的補償量 */
+  --kb-h: 0px;
   --vv-top: 0px;
-  --vv-h: 100%;
 }

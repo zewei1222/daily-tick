@@ -472,58 +472,60 @@ group('I2 鍵盤與可視區域');
     return el.scrollHeight <= el.clientHeight && getComputedStyle(document.body).position === 'fixed';
   }), true);
 
-  /* 開啟瞬間輸入框就必須在最終位置（否則 iOS 會為了露出它而捲動可視區域） */
+  const geo = () => page.$eval('#sheet-task', s => {
+    const r = s.getBoundingClientRect();
+    return { transform: getComputedStyle(s).transform, top: Math.round(r.top), h: Math.round(r.height) };
+  });
+  const kbVar = () => page.evaluate(() =>
+    getComputedStyle(document.documentElement).getPropertyValue('--kb-h').trim());
+  const padBottom = () => page.$eval('.sheet-body',
+    b => Math.round(parseFloat(getComputedStyle(b).paddingBottom)));
+
+  /* 開啟 + focus 之後，sheet 幾何必須一動也不動（動了就會露出背後清單 → 看起來在晃） */
   await tapEl(page, '#fab');
   await sleep(30);
-  const atOpen = await page.$eval('#sheet-task', s => {
-    const cs = getComputedStyle(s);
-    const r = s.getBoundingClientRect();
-    return { transform: cs.transform, top: Math.round(r.top), h: Math.round(r.height) };
+  eq('開啟第一帧就在最終位置、無位移動畫、滿高',
+     await geo(), { transform: 'none', top: 0, h: 852 });
+  ok('focus 當下就先開好鍵盤留白（不等鍵盤動畫）',
+     parseFloat(await kbVar()) > 300, await kbVar());
+  ok('留白吃在內容區，不動 sheet 幾何', (await padBottom()) > 300, await padBottom());
+
+  const inputBox = await page.$eval('#input-title', i => {
+    const r = i.getBoundingClientRect(); return { top: Math.round(r.top), bottom: Math.round(r.bottom) };
   });
-  eq('開啟第一帧就在最終位置、無位移動畫',
-     { transform: atOpen.transform, top: atOpen.top }, { transform: 'none', top: 0 });
-  ok('focus 當下就預先為鍵盤縮好高度（不等鍵盤動畫）',
-     atOpen.h > 300 && atOpen.h < 852 - 200, atOpen);
-  eq('輸入框在開啟瞬間已可見', await page.$eval('#input-title', i => {
-    const r = i.getBoundingClientRect();
-    return r.top > 0 && r.bottom < 452;
-  }), true);
+  ok('輸入框緊貼標題列下方，遠離鍵盤（iOS 沒有捲動的理由）',
+     inputBox.top > 0 && inputBox.bottom < 300, inputBox);
 
-  /* 鍵盤動畫期間鎖住不追事件；到期後量真值（headless 無鍵盤 → 回滿高） */
-  await page.evaluate(() => window.visualViewport.dispatchEvent(new Event('scroll')));
-  await sleep(60);
-  eq('動畫期間不因 viewport 事件改變幾何',
-     await page.$eval('#sheet-task', s => Math.round(s.getBoundingClientRect().height)), atOpen.h);
+  /* 鍵盤動畫期間：任何 viewport 事件都不得改變畫面 */
+  await page.evaluate(() => {
+    window.visualViewport.dispatchEvent(new Event('scroll'));
+    window.visualViewport.dispatchEvent(new Event('resize'));
+  });
+  await sleep(80);
+  eq('動畫期間 sheet 幾何不變', await geo(), { transform: 'none', top: 0, h: 852 });
+  ok('動畫期間留白不變', parseFloat(await kbVar()) > 300, await kbVar());
+
   await sleep(500);
-  eq('鎖定到期後量測真值', await page.$eval('#sheet-task',
-     s => Math.round(s.getBoundingClientRect().height)), 852);
+  eq('鎖定到期後量測真值（headless 無鍵盤 → 0）', await kbVar(), '0px');
+  eq('全程 sheet 幾何未變', await geo(), { transform: 'none', top: 0, h: 852 });
 
-  /* 記住的鍵盤高度會被用來精準預測（第二次之後全程零位移） */
+  /* 第二次起用實測鍵盤高度，預測即實測 */
   await tapEl(page, '#sheet-task [data-act="cancel"]');
   await sleep(300);
   await page.evaluate(() => localStorage.setItem('kb_height', '336'));
   await tapEl(page, '#fab');
   await sleep(30);
-  eq('用實測鍵盤高度預測 sheet 高度', await page.$eval('#sheet-task',
-     s => Math.round(s.getBoundingClientRect().height)), 852 - 336);
-  await sleep(500);
-
-  /* 模擬鍵盤：visual viewport 縮小並下移 */
-  await page.evaluate(() => {
-    document.documentElement.style.setProperty('--vv-top', '40px');
-    document.documentElement.style.setProperty('--vv-h', '452px');
-  });
-  await sleep(50);
-  const shrunk = await page.$eval('#sheet-task', s => {
-    const r = s.getBoundingClientRect(); return { top: Math.round(r.top), h: Math.round(r.height) };
-  });
-  eq('鍵盤彈出時 sheet 貼齊可視區域', shrunk, { top: 40, h: 452 });
-  eq('輸入框仍在可視範圍內', await page.$eval('#input-title', i => {
-    const r = i.getBoundingClientRect();
-    return r.top >= 40 && r.bottom <= 492;
-  }), true);
+  eq('用實測鍵盤高度開留白', await kbVar(), '336px');
+  eq('sheet 幾何仍然不變', await geo(), { transform: 'none', top: 0, h: 852 });
   eq('sheet 內容區可捲動', await page.$eval('.sheet-body',
      b => getComputedStyle(b).overflowY), 'auto');
+  await sleep(500);
+
+  /* 保險：極少數情況 iOS 仍搬動可視區域時的補償 */
+  await page.evaluate(() => document.documentElement.style.setProperty('--vv-top', '40px'));
+  await sleep(50);
+  eq('iOS 若仍搬動可視區域，sheet 會補償回來',
+     await page.$eval('#sheet-task', s => Math.round(s.getBoundingClientRect().top)), 40);
   await ctx.close();
 }
 

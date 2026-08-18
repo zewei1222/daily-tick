@@ -681,3 +681,28 @@ textarea.input {
   font-size: var(--fs-2);
 }
 .input.is-inline { width: calc(var(--hit-min) * 1.7); }
+
+/* 設定頁：已刪除的任務 */
+.del-item {
+  background: var(--c-surface-2);
+  border-radius: var(--r-md);
+  padding: var(--sp-3) var(--sp-4);
+}
+.del-item + .del-item { margin-top: var(--sp-2); }
+.del-name {
+  font-size: var(--fs-2);
+  font-weight: var(--fw-bold);
+  overflow-wrap: anywhere;
+}
+.del-meta {
+  margin-top: var(--sp-1);
+  font-size: var(--fs-1);
+  color: var(--c-ink-2);
+}
+.del-actions {
+  display: flex;
+  gap: var(--sp-2);
+  margin-top: var(--sp-3);
+}
+.btn.is-compact { padding: 0 var(--sp-4); font-size: var(--fs-1); }
+.btn.on-surface-2 { background: var(--c-bg); }

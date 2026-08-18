@@ -73,7 +73,9 @@
       note: typeof raw.note === 'string' ? raw.note.trim() : '',
       order_index: isFinite(Number(raw.order_index)) ? Math.round(Number(raw.order_index))
                                                      : (index + 1) * 1000,
-      created_at: typeof raw.created_at === 'string' ? raw.created_at : A.nowIso()
+      created_at: typeof raw.created_at === 'string' ? raw.created_at : A.nowIso(),
+      /* 軟刪除標記。改版前的備份沒有這個欄位，一律視為未刪除，不得報錯。 */
+      deleted_at: typeof raw.deleted_at === 'string' && raw.deleted_at ? raw.deleted_at : null
     };
 
     if (type === 'daily') {

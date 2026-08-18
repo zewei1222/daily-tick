@@ -158,7 +158,7 @@
     if (!emptyEl.hidden) {
       if (type === 'general') {
         emptyEl.textContent = '還沒有一般任務。按右下角的 ＋ 新增。';
-      } else if (A.tasksOf('daily').length === 0) {
+      } else if (A.activeTasks('daily').length === 0) {
         emptyEl.textContent = '還沒有日常任務。按右下角的 ＋ 新增。';
       } else {
         emptyEl.textContent = '今天沒有到期的日常任務。';

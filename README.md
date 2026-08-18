@@ -89,9 +89,11 @@ test/                 測試（開發用）
   "tasks": [
     { "id": "uuid", "type": "daily", "title": "倒垃圾", "note": "可回收與廚餘分開",
       "start_date": "2026-08-18", "repeat": { "unit": "week", "interval": 1 },
-      "order_index": 1000, "created_at": "...", "history": ["2026-08-18"] },
+      "order_index": 1000, "created_at": "...", "deleted_at": null,
+      "history": ["2026-08-18"] },
     { "id": "uuid", "type": "general", "title": "繳費", "note": "",
-      "order_index": 1000, "created_at": "...", "completed_at": null }
+      "order_index": 1000, "created_at": "...", "deleted_at": null,
+      "completed_at": null }
   ]
 }
 ```
@@ -117,20 +119,47 @@ test/                 測試（開發用）
 - 連續數在每日（間隔 1）時稱「天」，其他週期稱「期」。本期未完成但上一期有完成時，仍顯示上一期的連續數，不會一早就歸零
 - 統計的 30 天格子有三種狀態：亮紫＝完成、深灰＝到期未完成、純黑＝非到期日
 
+### 軟刪除
+
+刪除任務**不會**移除資料，只把 `deleted_at` 從 `null` 設成刪除時間。`history`（連續天數與
+未來統計的唯一資料來源）因此永遠不會被丟掉。
+
+- **所有清單讀取只能經由 `A.activeTasks(type)`**（`js/model.js`），它是唯一會過濾 `deleted_at`
+  的地方。呼叫端不得自己寫 `filter(t => !t.deleted_at)`，也不得直接遍歷 `A.state.tasks`
+- 左滑刪除與「清除已完成」都只是設 `deleted_at`，不動 `history`、`completed_at`、`order_index`
+- 設定頁的「已刪除的任務」可以**還原**（`deleted_at = null`，並排到該類型最後）或
+  **永久刪除**（唯一真的從陣列移除物件的路徑，需 confirm 且訊息會講明會失去幾次紀錄）
+- 沒有「全部清空」、沒有數量徽章、沒有自動清理期限 —— 刻意不做成「回收桶」，
+  因為回收桶會誘導人去清空，而清空就是永久丟掉統計資料
+- **匯出、`mirror`、gist 備份都包含已刪除的任務**，換裝置還原後它們仍是已刪除狀態
+
+兩個刻意的例外（讀 `tasks` 但不經過 `activeTasks()`）：
+
+| 位置 | 原因 |
+|---|---|
+| `syncDecision()` 的「本機 0 筆」硬規則 | 必須算**全部**筆數。若只算未刪除者，把所有任務都刪掉的裝置會被判定為「空白」而從遠端拉回，刪除就被還原了 |
+| 正規化與序列化（`normalizeState` / `writeMirror` / gist payload / 匯出） | 定義上就要看到完整陣列 |
+
+`findTask(id)` 也看得到已刪除的任務 —— 還原與永久刪除都得靠它命中，但它只以 id 查詢，
+不會讓已刪除的任務出現在任何清單裡。
+
 ### 版本遷移
 
 v1（只有標題）的資料可以直接讀入與匯入，會自動補上：`note` 為空字串、`repeat` 為每日、
 `start_date` 取**最早的歷史紀錄**（沒有歷史才退回 `created_at` 當天），這樣既有的連續紀錄不會斷掉。
 
+改版前的備份沒有 `deleted_at`，讀入時一律視為未刪除，不會報錯（`schema_version` 不需要因此變動，
+此欄位向下相容）。
+
 ## 測試
 
 ```bash
-node test/logic.test.js          # 純邏輯：日期、週期、連續期數、排序、匯入驗證、遷移、同步決策（104 項）
+node test/logic.test.js          # 純邏輯：日期、週期、連續期數、排序、軟刪除、匯入驗證、遷移（139 項）
 
 python3 test/serve.py            # 另開一個終端，掛在 /daily-tick/ 路徑
 cd test && npm i                 # 只裝 puppeteer-core，用系統的 google-chrome
-node ui.test.mjs                 # 瀏覽器行為：手勢、編輯模式、週期顯示、鍵盤、離線、版面（123 項）
-node sync.test.mjs               # 用假的 GitHub API 驗證備份流程 F1–F6、E5（26 項）
+node ui.test.mjs                 # 瀏覽器行為：手勢、編輯模式、週期、軟刪除、鍵盤、離線、版面（169 項）
+node sync.test.mjs               # 用假的 GitHub API 驗證備份流程 F1–F6、E5、軟刪除同步（33 項）
 ```
 
 UI 測試預設 `executablePath: '/usr/bin/google-chrome'`，換環境時改掉即可。

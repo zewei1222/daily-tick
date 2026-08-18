@@ -200,6 +200,48 @@ group('gist 被刪掉的情況');
   await ctx5.close();
 }
 
+/* ================================================================== */
+group('[16] 已刪除任務必須進入 gist 備份');
+{
+  const ctx6 = await browser.createBrowserContext();
+  const p6 = await newPage(ctx6);
+  await p6.goto(URL, { waitUntil: 'domcontentloaded' });
+  await add(p6, '留著的');
+  await add(p6, '要刪的');
+  await setPat(p6, 'ghp_test_token_123');
+  await sleep(1200);
+
+  await p6.evaluate(() => {
+    const t = App.activeTasks('daily').find(x => x.title === '要刪的');
+    t.history = ['2026-08-01', '2026-08-02'];
+    App.softDeleteTask(t.id);
+    App.save();
+    App.render.list('daily', { animate: false });
+  });
+  await sleep(3600);                        /* debounce 3 秒 */
+
+  const remote = remoteState();
+  const deleted = remote.tasks.find(t => t.title === '要刪的');
+  ok('[16] gist 內容包含已刪除任務', !!deleted, remote.tasks.map(t => t.title));
+  ok('[16] deleted_at 一起上傳', deleted && !!deleted.deleted_at, deleted && deleted.deleted_at);
+  eq('[16] history 一併保留', deleted.history, ['2026-08-01', '2026-08-02']);
+  eq('[16] 未刪除的任務不受影響',
+     remote.tasks.filter(t => t.deleted_at == null).map(t => t.title), ['留著的']);
+  eq('[16] 狀態為已同步', await status(p6), '已同步');
+
+  /* 從備份還原到新裝置時，已刪除的仍是已刪除 */
+  const ctx7 = await browser.createBrowserContext();
+  const p7 = await newPage(ctx7);
+  await p7.goto(URL, { waitUntil: 'domcontentloaded' });
+  await setPat(p7, 'ghp_test_token_123');
+  await sleep(1500);
+  eq('[16] 新裝置拉回後清單只有未刪除的', await titles(p7), ['留著的']);
+  eq('[16] 已刪除的任務也一起拉回（未被丟棄）',
+     await p7.evaluate(() => [App.state.tasks.length, App.deletedTasks().length]), [2, 1]);
+  await ctx6.close();
+  await ctx7.close();
+}
+
 console.log('\npage errors: ' + (errors.length ? JSON.stringify(errors) : 'none'));
 ok('無 page error', errors.length === 0);
 console.log('\n' + pass + ' passed, ' + fail + ' failed');

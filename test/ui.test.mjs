@@ -22,7 +22,8 @@ async function newPage(ctx) {
   await page.setViewport({ width: 393, height: 852, deviceScaleFactor: 3, hasTouch: true, isMobile: true });
   page.on('console', m => { if (m.type() === 'error') errors.push(m.text()); });
   page.on('pageerror', e => errors.push('pageerror: ' + e.message));
-  page.on('dialog', d => d.accept());
+  page.__dialogs = [];
+  page.on('dialog', d => { page.__dialogs.push(d.message()); d.accept(); });
   return page;
 }
 
@@ -125,7 +126,7 @@ group('D. 手勢：點擊 / 左滑刪除');
     const rec = await App.idbLoad(); return rec.tasks.find(t => t.title === '連點').completed_at;
   });
   eq('D2b IndexedDB 與記憶體一致', idbVal, null);
-  await page.evaluate(() => { App.deleteTask(App.state.tasks.find(t => t.title === '連點').id);
+  await page.evaluate(() => { App.softDeleteTask(App.state.tasks.find(t => t.title === '連點').id);
                               App.render.list('general', { animate: false }); App.save(); });
   await tapEl(page, '.tab[data-tab="daily"]');
   await sleep(200);
@@ -283,7 +284,7 @@ group('C7 新增 / 一般分頁 / H 清除已完成');
   await sleep(350);
   eq('H2 只清掉已完成的一般任務', await titles(page, 'general'), ['g2']);
   eq('H2 每日任務不受影響',
-     await page.evaluate(() => App.tasksOf('daily').length), 3);
+     await page.evaluate(() => App.activeTasks('daily').length), 3);
   eq('H1 清完後按鈕消失', await page.$eval('#foot-general', e => e.hidden), true);
 
   /* J7 分頁記憶 */
@@ -476,6 +477,277 @@ group('註釋 / 日程 / 週期（新功能）');
   eq('統計顯示敘述', stats.note, '記得先分類');
   eq('30 格', stats.cells, 30);
   ok('到期未完成有標出來', stats.missed > 0 && stats.missed < 30, stats);
+  await ctx.close();
+}
+
+/* ================================================================= */
+group('軟刪除：SOFT_DELETE_TASK.md 的 16 項驗收');
+{
+  const ctx = await browser.createBrowserContext();
+  const page = await newPage(ctx);
+  await page.goto(URL, { waitUntil: 'domcontentloaded' });
+
+  const openSettings = async () => { await tapEl(page, '#btn-settings'); await sleep(300); };
+  const closeSettings = async () => {
+    await tapEl(page, '#sheet-settings [data-act="close"]'); await sleep(300);
+  };
+  const exportJson = async () => {
+    await openSettings();
+    const txt = await page.$eval('#ta-export', t => t.value);
+    await closeSettings();
+    return JSON.parse(txt);
+  };
+  const deletedRows = () => page.$$eval('#deleted-list .del-item', items => items.map(el => ({
+    name: el.querySelector('.del-name').textContent,
+    meta: el.querySelector('.del-meta').textContent
+  })));
+
+  /* 準備：兩個有紀錄的日常任務 + 一個沒紀錄的 */
+  await page.evaluate(() => {
+    const today = App.logicalToday();
+    const back = n => App.shiftDate(today, -n);
+    const a = App.addTask('daily', { title: '早起', start_date: back(40) });
+    a.history = Array.from({ length: 38 }, (_, i) => back(38 - i)).sort();
+    const b = App.addTask('daily', { title: '喝水', start_date: back(10) });
+    b.history = [back(2), back(1), today].sort();
+    App.addTask('daily', { title: '拉筋', start_date: back(5) });
+    App.save(); App.render.all({ animate: false });
+  });
+  await sleep(150);
+  eq('準備完成', await titles(page, 'daily'), ['早起', '拉筋', '喝水']);
+  const before = await page.evaluate(() => {
+    const t = App.state.tasks.find(x => x.title === '喝水');
+    return { streak: App.streak(t), longest: App.longestStreak(t), total: t.history.length };
+  });
+
+  /* 1. 刪除一個有多天完成紀錄的每日任務 → 卡片從清單消失 */
+  await swipeLeft(page, '#list-daily .row:first-child .card', 80);
+  await tapEl(page, '#list-daily .row:first-child .btn-del');
+  await sleep(400);
+  eq('[1] 卡片從清單消失', await titles(page, 'daily'), ['拉筋', '喝水']);
+
+  /* 2. 匯出 JSON：任務仍在、deleted_at 有值、history 完整 */
+  let dump = await exportJson();
+  let gone = dump.tasks.find(t => t.title === '早起');
+  ok('[2] 匯出的 JSON 仍含該任務', !!gone);
+  ok('[2] deleted_at 有值', gone && /^\d{4}-\d{2}-\d{2}T/.test(gone.deleted_at), gone && gone.deleted_at);
+  eq('[2] history 完整保留（38 筆）', gone.history.length, 38);
+
+  /* 3. 統計頁不出現，其他任務數字未受影響 */
+  await tapEl(page, '.tab[data-tab="stats"]');
+  await sleep(300);
+  const statNames = await page.$$eval('.stat-name', ns => ns.map(n => n.textContent));
+  eq('[3] 統計頁不出現已刪除任務（依 order_index 排）', statNames, ['喝水', '拉筋']);
+  const after = await page.evaluate(() => {
+    const t = App.state.tasks.find(x => x.title === '喝水');
+    return { streak: App.streak(t), longest: App.longestStreak(t), total: t.history.length };
+  });
+  eq('[3] 其他任務的統計數字未受影響', after, before);
+  await tapEl(page, '.tab[data-tab="daily"]');
+  await sleep(250);
+
+  /* 4. 設定頁「已刪除的任務」顯示正確的刪除日期與紀錄次數 */
+  await openSettings();
+  const rows = await deletedRows();
+  eq('[4] 已刪除清單含該任務', rows.map(r => r.name), ['早起']);
+  const todayStr = await page.evaluate(() => {
+    const d = new Date();
+    const p = n => String(n).padStart(2, '0');
+    return d.getFullYear() + '-' + p(d.getMonth() + 1) + '-' + p(d.getDate());
+  });
+  ok('[4] 顯示類型、刪除日期、紀錄次數',
+     rows[0].meta.includes('日常') && rows[0].meta.includes('刪除於 ' + todayStr) &&
+     rows[0].meta.includes('38 次紀錄'), rows[0].meta);
+
+  /* 13. 設定頁 UI：無「全部清空」類按鈕、入口無數量徽章 */
+  const ui = await page.evaluate(() => {
+    const sheet = document.querySelector('#sheet-settings');
+    const texts = Array.from(sheet.querySelectorAll('button')).map(b => b.textContent.trim());
+    const title = Array.from(sheet.querySelectorAll('.group-title'))
+      .find(t => t.textContent.indexOf('已刪除') >= 0).textContent;
+    return { texts, title, dotHidden: document.querySelector('#sync-dot').hidden,
+             gearText: document.querySelector('#btn-settings').textContent.trim() };
+  });
+  ok('[13] 沒有「全部清空 / 清空 / 批次刪除」類按鈕',
+     !ui.texts.some(t => /清空|全部刪除|批次/.test(t)), ui.texts);
+  ok('[13] 區塊標題不含數字徽章', !/\d/.test(ui.title), ui.title);
+  ok('[13] 入口（齒輪）不顯示數量或紅點', ui.gearText === '⚙' && ui.dotHidden,
+     { gearText: ui.gearText, dotHidden: ui.dotHidden });
+  ok('[13] 不叫「回收桶」', !/回收|垃圾桶/.test(ui.title + ui.texts.join('')));
+
+  /* 5. 點「還原」→ 回到清單最後，連續天數與歷史完整恢復 */
+  await tapEl(page, '#deleted-list [data-act="restore"]');
+  await sleep(350);
+  eq('[5] 還原後已刪除清單變空',
+     await page.$eval('#deleted-list', h => h.textContent.trim()), '沒有已刪除的任務');
+  await closeSettings();
+  eq('[5] 還原後索引排到最後（未刪除者最大值 + 1000）',
+     await page.evaluate(() => {
+       const list = App.activeTasks('daily').sort((a, b) => a.order_index - b.order_index);
+       return [list[list.length - 1].title, list[list.length - 1].order_index];
+     }), ['早起', 4000]);
+  eq('[5] 顯示順序：未完成者依索引，已完成的「喝水」仍沉底',
+     await titles(page, 'daily'), ['拉筋', '早起', '喝水']);
+  const restored = await page.evaluate(() => {
+    const t = App.state.tasks.find(x => x.title === '早起');
+    return { deleted: t.deleted_at, total: t.history.length, streak: App.streak(t),
+             longest: App.longestStreak(t) };
+  });
+  eq('[5] deleted_at 歸零', restored.deleted, null);
+  eq('[5] 歷史與連續天數完整恢復', [restored.total, restored.longest], [38, 38]);
+
+  /* 6. 刪除中間任務後進編輯模式拖曳排序 */
+  await page.evaluate(() => {
+    const t = App.state.tasks.find(x => x.title === '喝水');
+    App.softDeleteTask(t.id); App.save(); App.render.all({ animate: false });
+  });
+  await sleep(150);
+  await tapEl(page, '#btn-edit');
+  await sleep(300);
+  eq('[6] 編輯模式不出現已刪除任務', await titles(page, 'daily'), ['拉筋', '早起']);
+  await page.evaluate(() => {
+    const ids = App.sortedTasks('daily', 'edit').map(t => t.id);
+    App.applyOrder('daily', [ids[1], ids[0]]);      /* 模擬拖曳交換 */
+    App.save(); App.render.list('daily', { animate: false });
+  });
+  await sleep(150);
+  eq('[6] 拖曳後順序正常', await titles(page, 'daily'), ['早起', '拉筋']);
+  await tapEl(page, '#btn-edit');
+  await sleep(300);
+
+  /* 7. 匯出檢查 order_index */
+  dump = await exportJson();
+  const active = dump.tasks.filter(t => t.deleted_at == null)
+    .sort((a, b) => a.order_index - b.order_index);
+  eq('[7] 未刪除任務索引連續正確',
+     active.map(t => [t.title, t.order_index]), [['早起', 1000], ['拉筋', 2000]]);
+  const del = dump.tasks.find(t => t.title === '喝水');
+  eq('[7] 已刪除任務的索引未被 applyOrder 改寫（維持刪除時的 2000）',
+     del.order_index, 2000);
+
+  /* 8. 刪除後新增任務 */
+  await page.evaluate(() => {
+    App.addTask('daily', { title: '新任務' });
+    App.save(); App.render.list('daily', { animate: false });
+  });
+  await sleep(150);
+  eq('[8] 新任務排在最後', await titles(page, 'daily'), ['早起', '拉筋', '新任務']);
+  const orders = await page.evaluate(() =>
+    App.activeTasks('daily').map(t => [t.title, t.order_index]));
+  eq('[8] 新任務索引不與已刪除者衝突',
+     orders, [['早起', 1000], ['拉筋', 2000], ['新任務', 3000]]);
+  ok('[8] 新任務的索引不等於任何已刪除任務的索引', await page.evaluate(() => {
+    const used = App.deletedTasks().filter(t => t.type === 'daily').map(t => t.order_index);
+    const fresh = App.activeTasks('daily').find(t => t.title === '新任務');
+    return used.indexOf(fresh.order_index) < 0;
+  }));
+
+  /* 9 + 10. 一般分頁清除已完成 */
+  await tapEl(page, '.tab[data-tab="general"]');
+  await sleep(250);
+  await page.evaluate(() => {
+    ['繳費', '寄信', '還沒做'].forEach(t => App.addTask('general', { title: t }));
+    App.save(); App.render.list('general', { animate: false });
+  });
+  await sleep(150);
+  await tapEl(page, '#list-general .row:nth-child(1) .card');
+  await sleep(250);
+  await tapEl(page, '#list-general .row:nth-child(2) .card');
+  await sleep(250);
+  const dailyBefore = await page.evaluate(() => App.activeTasks('daily').map(t => t.title));
+  await tapEl(page, '#btn-clear-done');
+  await sleep(400);
+  eq('[9] 卡片消失', await titles(page, 'general'), ['還沒做']);
+  dump = await exportJson();
+  const cleared = dump.tasks.filter(t => ['繳費', '寄信'].indexOf(t.title) >= 0);
+  eq('[9] JSON 中物件仍在', cleared.length, 2);
+  ok('[9] 兩者 deleted_at 都有值', cleared.every(t => !!t.deleted_at), cleared.map(t => t.deleted_at));
+  ok('[9] completed_at 未被動', cleared.every(t => !!t.completed_at));
+  eq('[10] 未完成的一般任務不受影響',
+     dump.tasks.filter(t => t.title === '還沒做').map(t => [t.deleted_at, t.completed_at]),
+     [[null, null]]);
+  eq('[10] 所有每日任務不受影響',
+     await page.evaluate(() => App.activeTasks('daily').map(t => t.title)), dailyBefore);
+
+  /* 11. 刪除全部任務 → 顯示空狀態，不顯示已刪除的 */
+  await page.evaluate(() => {
+    App.activeTasks().forEach(t => App.softDeleteTask(t.id));
+    App.save(); App.render.all({ animate: false });
+  });
+  await sleep(200);
+  eq('[11] 一般分頁清單為空', (await titles(page, 'general')).length, 0);
+  eq('[11] 顯示空狀態文案', await page.$eval('#empty-general',
+     e => e.hidden ? null : e.textContent), '還沒有一般任務。按右下角的 ＋ 新增。');
+  await tapEl(page, '.tab[data-tab="daily"]');
+  await sleep(250);
+  eq('[11] 日常分頁也是空狀態', await page.$eval('#empty-daily',
+     e => e.hidden ? null : e.textContent), '還沒有日常任務。按右下角的 ＋ 新增。');
+  eq('[11] 統計頁不顯示已刪除任務', await (async () => {
+    await tapEl(page, '.tab[data-tab="stats"]'); await sleep(250);
+    return page.$$eval('.stat-name', ns => ns.map(n => n.textContent));
+  })(), []);
+  await tapEl(page, '.tab[data-tab="daily"]');
+  await sleep(250);
+
+  /* 15. 強制關閉重開（以 IndexedDB 落地 + 重新導覽驗證） */
+  const idbState = await page.evaluate(async () => {
+    const rec = await App.idbLoad();
+    return { total: rec.tasks.length, deleted: rec.tasks.filter(t => t.deleted_at).length };
+  });
+  eq('[15] deleted_at 已寫入 IndexedDB', idbState.deleted, idbState.total);
+  const page2 = await newPage(ctx);
+  await page2.goto(URL, { waitUntil: 'domcontentloaded' });
+  eq('[15] 首屏（DOMContentLoaded）未重現已刪除任務',
+     (await page2.$$eval('#list-daily .card-title', ns => ns.map(n => n.textContent))).length, 0);
+  eq('[15] 資料仍在，只是被標記',
+     await page2.evaluate(() => [App.state.tasks.length, App.activeTasks().length]),
+     [idbState.total, 0]);
+
+  /* 12. 永久刪除：confirm 訊息含紀錄次數，物件真的消失 */
+  await tapEl(page2, '#btn-settings');
+  await sleep(300);
+  const targetName = await page2.$eval('#deleted-list .del-item .del-name', e => e.textContent);
+  const purgeTarget = await page2.evaluate(name => {
+    const t = App.state.tasks.find(x => x.title === name);
+    return { id: t.id, history: t.history ? t.history.length : 0, total: App.state.tasks.length };
+  }, targetName);
+  page2.__dialogs.length = 0;
+  await tapEl(page2, '#deleted-list .del-item [data-act="purge"]');
+  await sleep(400);
+  ok('[12] 出現 confirm 對話框', page2.__dialogs.length === 1, page2.__dialogs);
+  ok('[12] 警告文字含任務名稱', page2.__dialogs[0].includes(targetName), page2.__dialogs[0]);
+  if (purgeTarget.history > 0) {
+    ok('[12] 警告文字含紀錄次數',
+       page2.__dialogs[0].includes(purgeTarget.history + ' 次'), page2.__dialogs[0]);
+  }
+  eq('[12] JSON 中該物件真正消失', await page2.evaluate(id =>
+     App.state.tasks.some(t => t.id === id), purgeTarget.id), false);
+  eq('[12] 只少一筆，其他已刪除任務仍在',
+     await page2.evaluate(() => App.state.tasks.length), purgeTarget.total - 1);
+
+  /* 14. 讀入改版前的舊備份（無 deleted_at） */
+  const errCountBefore = errors.length;
+  await page2.evaluate(() => {
+    document.querySelector('#ta-import').value = JSON.stringify({
+      schema_version: 1, updated_at: '2026-01-01T00:00:00.000Z',
+      settings: { reset_hour: 4 },
+      tasks: [
+        { id: 'o1', type: 'daily', title: '舊的日常', order_index: 1000,
+          created_at: '2025-12-01T00:00:00.000Z', history: ['2025-12-01', '2025-12-02'] },
+        { id: 'o2', type: 'general', title: '舊的一般', order_index: 1000,
+          created_at: '2025-12-01T00:00:00.000Z', completed_at: null }
+      ]
+    });
+  });
+  await tapEl(page2, '#deleted-list [data-act="purge"]').catch(() => {});
+  await tapEl(page2, '#btn-import');
+  await sleep(500);
+  eq('[14] 正常載入，全部視為未刪除',
+     await page2.evaluate(() => App.state.tasks.map(t => [t.title, t.deleted_at])),
+     [['舊的日常', null], ['舊的一般', null]]);
+  eq('[14] 已刪除清單為空',
+     await page2.$eval('#deleted-list', h => h.textContent.trim()), '沒有已刪除的任務');
+  eq('[14] 無錯誤', errors.length, errCountBefore);
   await ctx.close();
 }
 

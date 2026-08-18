@@ -217,9 +217,86 @@
 
     A.$('#ta-export').value = JSON.stringify(A.state, null, 2);
     A.$('#ta-import').value = '';
+    renderDeletedList();
     A.$('#about-line').textContent = 'schema v' + A.SCHEMA_VERSION +
       (A.sync.gistId() ? ' ・ gist ' + A.sync.gistId().slice(0, 8) : '');
     renderSyncStatus();
+  }
+
+  /* ---------- 設定頁：已刪除的任務 ---------- */
+  function shortDate(iso) {
+    var d = new Date(iso);
+    if (isNaN(d.getTime())) return '—';
+    return d.getFullYear() + '-' + A.pad2(d.getMonth() + 1) + '-' + A.pad2(d.getDate());
+  }
+
+  function renderDeletedList() {
+    var host = A.$('#deleted-list');
+    if (!host) return;
+    host.textContent = '';
+
+    var list = A.deletedTasks();
+    if (!list.length) {
+      host.appendChild(A.el('p', 'hint', '沒有已刪除的任務'));
+      return;
+    }
+
+    list.forEach(function (t) {
+      var box = A.el('div', 'del-item');
+      box.appendChild(A.el('div', 'del-name', t.title));
+
+      var bits = [t.type === 'daily' ? '日常' : '一般', '刪除於 ' + shortDate(t.deleted_at)];
+      if (t.type === 'daily') bits.push(t.history.length + ' 次紀錄');
+      box.appendChild(A.el('div', 'del-meta', bits.join('・')));
+
+      var acts = A.el('div', 'del-actions');
+      var restore = A.el('button', 'btn is-compact on-surface-2', '還原');
+      restore.type = 'button';
+      restore.dataset.act = 'restore';
+      restore.dataset.id = t.id;
+      var purge = A.el('button', 'btn is-compact is-danger', '永久刪除');
+      purge.type = 'button';
+      purge.dataset.act = 'purge';
+      purge.dataset.id = t.id;
+      acts.appendChild(restore);
+      acts.appendChild(purge);
+      box.appendChild(acts);
+
+      host.appendChild(box);
+    });
+  }
+
+  function onDeletedListClick(e) {
+    var btn = e.target.closest('button[data-act]');
+    if (!btn) return;
+    var id = btn.dataset.id;
+    var task = A.findTask(id);
+    if (!task) return;
+
+    if (btn.dataset.act === 'restore') {
+      var t = A.restoreTask(id);
+      if (!t) return;
+      A.save();
+      A.render.list(t.type, { animate: true });
+      if (A.tab === 'stats') A.render.stats();
+      renderDeletedList();
+      A.toast('已還原「' + t.title + '」');
+      return;
+    }
+
+    /* 永久刪除：唯一真的把資料丟掉的路徑，訊息要把代價講清楚 */
+    var msg;
+    if (task.type === 'daily' && task.history.length) {
+      msg = '永久刪除「' + task.title + '」？此任務的 ' + task.history.length +
+            ' 次完成紀錄將無法復原，未來的統計功能也不會計入。';
+    } else {
+      msg = '永久刪除「' + task.title + '」？此任務將無法復原。';
+    }
+    if (!confirm(msg)) return;
+    A.purgeTask(id);
+    A.save();
+    renderDeletedList();
+    A.toast('已永久刪除');
   }
 
   function renderSyncStatus() {
@@ -263,7 +340,7 @@
     A.render.all({ animate: false });
     restoreScroll();
     fillSettings();
-    A.toast('已匯入 ' + A.state.tasks.length + ' 筆任務');
+    A.toast('已匯入 ' + A.activeTasks().length + ' 筆任務');
   }
 
   function copyExport() {
@@ -480,6 +557,7 @@
       if (!A.sync.token()) { A.toast('尚未設定 PAT'); return; }
       A.sync.startup().then(fillSettings);
     });
+    A.$('#deleted-list').addEventListener('click', onDeletedListClick);
     A.$('#btn-export-copy').addEventListener('click', copyExport);
     A.$('#btn-import').addEventListener('click', doImport);
 

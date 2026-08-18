@@ -170,7 +170,7 @@
     if (!task) return;
     var type = task.type;
     G.closeOpen(false);
-    A.deleteTask(id);
+    A.softDeleteTask(id);
     A.render.list(type, { animate: true });
     if (A.tab === 'stats') A.render.stats();
     A.save();

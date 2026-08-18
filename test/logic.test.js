@@ -234,7 +234,9 @@ setState([daily('d1', ['2026-08-18'], 1000), general('g1', '2026-08-18T00:00:00.
           general('g2', null, 2000)], 4);
 eq('H2 只刪 general 已完成', A.clearCompletedGeneral(), 1);
 eq('H2 每日任務與未完成一般任務不受影響',
-   A.state.tasks.map(function (x) { return x.title; }), ['d1', 'g2']);
+   A.activeTasks().map(function (x) { return x.title; }), ['d1', 'g2']);
+ok('H2 被清除的物件仍在陣列中且有 deleted_at',
+   A.state.tasks.length === 3 && A.findTask('g1').deleted_at != null);
 
 group('F. 同步決策（§6.3）');
 var L = function (n, when) { return { tasks: new Array(n).fill(0), updated_at: when }; };
@@ -317,6 +319,97 @@ eq('非法 repeat 退回每日', A.normalizeState({ tasks: [
   { unit: 'day', interval: 1 });
 eq('note 會 trim', A.normalizeState({ tasks: [
   { type: 'daily', title: 'x', note: '  有空白  ' }] }).tasks[0].note, '有空白');
+
+group('軟刪除：集中過濾');
+setState([daily('d1', ['2026-08-01', '2026-08-02'], 1000), daily('d2', [], 2000),
+          general('g1', null, 1000)], 4);
+freeze(2026, 8, 18, 10);
+ok('刪除前 activeTasks 看得到', A.activeTasks('daily').length === 2);
+ok('軟刪除成功', A.softDeleteTask('d1') === true);
+eq('activeTasks 不再回傳已刪除的',
+   A.activeTasks('daily').map(function (t) { return t.title; }), ['d2']);
+eq('沒有 type 時也過濾', A.activeTasks().map(function (t) { return t.title; }), ['d2', 'g1']);
+ok('物件仍在陣列裡', A.state.tasks.length === 3);
+ok('deleted_at 是 ISO 字串', /^\d{4}-\d{2}-\d{2}T/.test(A.findTask('d1').deleted_at));
+eq('history 完全沒被動', A.findTask('d1').history, ['2026-08-01', '2026-08-02']);
+eq('order_index 完全沒被動', A.findTask('d1').order_index, 1000);
+ok('重複刪除不覆寫時間', (function () {
+  var before = A.findTask('d1').deleted_at;
+  return A.softDeleteTask('d1') === false && A.findTask('d1').deleted_at === before;
+})());
+eq('排序不含已刪除（一般模式）',
+   A.sortedTasks('daily', 'normal').map(function (t) { return t.title; }), ['d2']);
+eq('排序不含已刪除（編輯模式）',
+   A.sortedTasks('daily', 'edit').map(function (t) { return t.title; }), ['d2']);
+eq('deletedTasks 只回傳已刪除的',
+   A.deletedTasks().map(function (t) { return t.title; }), ['d1']);
+
+group('軟刪除：order_index 不受已刪除者影響');
+setState([daily('a', [], 1000), daily('b', [], 2000), daily('c', [], 3000)], 4);
+A.softDeleteTask('c');
+eq('新增任務的索引以未刪除者最大值為基準，並跳過已刪除者佔用的 3000',
+   A.nextOrder('daily'), 4000);
+var added = A.addTask('daily', { title: 'd' });
+eq('新任務排在最後', added.order_index, 4000);
+eq('新任務不與已刪除者的索引重複',
+   A.activeTasks('daily').map(function (t) { return [t.title, t.order_index]; }),
+   [['a', 1000], ['b', 2000], ['d', 4000]]);
+ok('已刪除者仍保有自己的 3000', A.findTask('c').order_index === 3000);
+A.applyOrder('daily', A.sortedTasks('daily', 'edit').map(function (t) { return t.id; }));
+eq('拖曳重排只重排未刪除者',
+   A.activeTasks('daily').map(function (t) { return [t.title, t.order_index]; }),
+   [['a', 1000], ['b', 2000], ['d', 3000]]);
+eq('已刪除者的索引不被改寫', A.findTask('c').order_index, 3000);
+
+group('軟刪除：還原與永久刪除');
+setState([daily('keep', [], 1000), daily('gone', ['2026-08-01', '2026-08-02', '2026-08-03'], 2000)], 4);
+freeze(2026, 8, 3, 10);
+eq('刪除前連續 3 天', A.streak(A.findTask('gone')), 3);
+A.softDeleteTask('gone');
+var restored = A.restoreTask('gone');
+ok('還原回傳任務', !!restored);
+eq('deleted_at 歸零', restored.deleted_at, null);
+eq('還原後排到最後（未刪除者最大值 + 1000，不因自己的舊索引而多跳）',
+   restored.order_index, 2000);
+eq('還原後連續天數完整恢復', A.streak(A.findTask('gone')), 3);
+eq('還原後歷史完整', A.findTask('gone').history, ['2026-08-01', '2026-08-02', '2026-08-03']);
+ok('還原不存在的任務回 null', A.restoreTask('沒這個') === null);
+setState([daily('x', [], 1000), daily('y', [], 5000)], 4);
+A.softDeleteTask('y');
+A.restoreTask('y');
+eq('還原時取未刪除者最大值 + 1000', A.findTask('y').order_index, 2000);
+ok('永久刪除真的移除物件',
+   (A.softDeleteTask('y'), A.purgeTask('y') === true && A.state.tasks.length === 1));
+ok('永久刪除不存在的 id 回 false', A.purgeTask('沒這個') === false);
+
+group('軟刪除：遷移與序列化');
+var noField = A.normalizeState({ tasks: [
+  { id: 'a', type: 'daily', title: '舊資料', order_index: 1000, history: [] }] });
+eq('舊備份沒有 deleted_at → 視為未刪除', noField.tasks[0].deleted_at, null);
+var withField = A.normalizeState({ tasks: [
+  { id: 'a', type: 'daily', title: 'x', order_index: 1000, history: [],
+    deleted_at: '2026-08-18T00:00:00.000Z' }] });
+eq('已刪除標記會保留', withField.tasks[0].deleted_at, '2026-08-18T00:00:00.000Z');
+eq('非字串的 deleted_at 視為未刪除', A.normalizeState({ tasks: [
+  { id: 'a', type: 'daily', title: 'x', order_index: 1000, history: [], deleted_at: 123 }]
+}).tasks[0].deleted_at, null);
+A.state = A.normalizeState({ tasks: [
+  { id: 'a', type: 'daily', title: '在', order_index: 1000, history: ['2026-08-01'] },
+  { id: 'b', type: 'daily', title: '刪了', order_index: 2000, history: ['2026-08-02'],
+    deleted_at: '2026-08-18T00:00:00.000Z' }] });
+ok('序列化（匯出 / mirror / gist）包含已刪除的任務',
+   JSON.stringify(A.state).indexOf('刪了') >= 0);
+eq('但清單只看得到未刪除的',
+   A.activeTasks('daily').map(function (t) { return t.title; }), ['在']);
+
+group('軟刪除：同步決策刻意計入已刪除者');
+eq('本機只剩已刪除的任務且較新 → 上傳（刪除要傳播出去，不可被遠端蓋回）',
+   A.syncDecision({ tasks: [{ deleted_at: '2026-08-18T00:00:00Z' }],
+                    updated_at: '2026-08-18T10:00:00Z' },
+                  { tasks: [{ deleted_at: null }], updated_at: '2026-08-18T09:00:00Z' }), 'push');
+eq('真正空白的本機（0 筆）仍走硬規則拉回',
+   A.syncDecision({ tasks: [], updated_at: '2026-08-18T10:00:00Z' },
+                  { tasks: [{ deleted_at: null }], updated_at: '2000-01-01T00:00:00Z' }), 'pull');
 
 console.log('\n' + pass + ' passed, ' + fail + ' failed');
 process.exit(fail ? 1 : 0);

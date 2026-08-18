@@ -177,13 +177,25 @@
 
   /* ================= 取用 / 排序 ================= */
 
-  A.tasksOf = function (type) {
-    return A.state.tasks.filter(function (t) { return t.type === type; });
+  /* ★ 所有任務讀取的唯一入口。軟刪除的任務（deleted_at 有值）一律不回傳。
+     禁止在呼叫端自行寫 filter(t => !t.deleted_at)，也禁止直接遍歷 A.state.tasks
+     —— 只有序列化（mirror / 匯出 / gist）與正規化可以看到完整陣列。 */
+  A.activeTasks = function (type) {
+    return A.state.tasks.filter(function (t) {
+      return t.deleted_at == null && (type ? t.type === type : true);
+    });
   };
 
-  /* 一般模式的日常分頁只顯示「今天到期」的；編輯模式顯示全部 */
+  /* 已刪除的任務，最近刪除的在前面（只給設定頁的「已刪除的任務」用） */
+  A.deletedTasks = function () {
+    return A.state.tasks.filter(function (t) { return t.deleted_at != null; })
+      .sort(function (a, b) {
+        return String(b.deleted_at).localeCompare(String(a.deleted_at));
+      });
+  };
+
   A.sortedTasks = function (type, mode) {
-    var list = A.tasksOf(type);
+    var list = A.activeTasks(type);
     if (mode === 'edit') {
       return list.sort(function (a, b) { return a.order_index - b.order_index; });
     }
@@ -195,6 +207,8 @@
     });
   };
 
+  /* 依 id 尋找，含已刪除的：還原與永久刪除都必須找得到它們。
+     只以 id 命中，不會讓已刪除的任務出現在任何清單裡。 */
   A.findTask = function (id) {
     for (var i = 0; i < A.state.tasks.length; i++) {
       if (A.state.tasks[i].id === id) return A.state.tasks[i];
@@ -204,12 +218,25 @@
 
   /* ================= 變更 ================= */
 
-  A.nextOrder = function (type) {
+  /* 新增與還原時的索引。
+     基準值只看未刪除者的最大值（要求文件：max(order_index) 應只計算未刪除者），
+     但會跳過已刪除任務仍佔用的索引，以滿足「新任務不得與已刪除任務的索引衝突」。
+     注意：拖曳後的重排（applyOrder）仍嚴格用 (i+1)*1000，不為已刪除者讓位，
+     否則未刪除者的索引就不再連續。 */
+  A.nextOrder = function (type, exceptId) {
     var max = null;
-    A.tasksOf(type).forEach(function (t) {
+    A.activeTasks(type).forEach(function (t) {
       if (max === null || t.order_index > max) max = t.order_index;
     });
-    return max === null ? 1000 : max + 1000;
+    var next = max === null ? 1000 : max + 1000;
+
+    /* exceptId：還原時要排除「自己」的舊索引，否則會為了避開自己而多跳一級 */
+    var used = Object.create(null);
+    A.deletedTasks().forEach(function (t) {
+      if (t.type === type && t.id !== exceptId) used[t.order_index] = true;
+    });
+    while (used[next]) next += 1000;
+    return next;
   };
 
   A.addTask = function (type, fields) {
@@ -219,7 +246,8 @@
       title: String(fields.title || '').trim(),
       note: String(fields.note || '').trim(),
       order_index: A.nextOrder(type),
-      created_at: A.nowIso()
+      created_at: A.nowIso(),
+      deleted_at: null
     };
     if (type === 'daily') {
       t.start_date = fields.start_date || A.logicalToday();
@@ -250,22 +278,44 @@
     return t;
   };
 
-  A.deleteTask = function (id) {
-    var i = A.state.tasks.findIndex(function (t) { return t.id === id; });
-    if (i >= 0) A.state.tasks.splice(i, 1);
-    return i >= 0;
+  /* 軟刪除：只標記時間，不動 history / completed_at / order_index */
+  A.softDeleteTask = function (id) {
+    var t = A.findTask(id);
+    if (!t || t.deleted_at != null) return false;
+    t.deleted_at = A.nowIso();
+    return true;
   };
 
+  /* 還原：清掉標記，並排到該類型的最後。
+     順序很重要：先用「目前未刪除者」算出索引，再清標記，否則會把自己算進去。 */
+  A.restoreTask = function (id) {
+    var t = A.findTask(id);
+    if (!t || t.deleted_at == null) return null;
+    var order = A.nextOrder(t.type, t.id);
+    t.deleted_at = null;
+    t.order_index = order;
+    return t;
+  };
+
+  /* 唯一真正從陣列移除物件的路徑 */
+  A.purgeTask = function (id) {
+    var i = A.state.tasks.findIndex(function (t) { return t.id === id; });
+    if (i < 0) return false;
+    A.state.tasks.splice(i, 1);
+    return true;
+  };
+
+  /* 清除已完成：對符合條件者設 deleted_at，不移除物件 */
   A.clearCompletedGeneral = function () {
-    var before = A.state.tasks.length;
-    A.state.tasks = A.state.tasks.filter(function (t) {
-      return !(t.type === 'general' && t.completed_at);
+    var n = 0;
+    A.activeTasks('general').forEach(function (t) {
+      if (t.completed_at) { t.deleted_at = A.nowIso(); n++; }
     });
-    return before - A.state.tasks.length;
+    return n;
   };
 
   A.hasCompletedGeneral = function () {
-    return A.state.tasks.some(function (t) { return t.type === 'general' && t.completed_at; });
+    return A.activeTasks('general').some(function (t) { return !!t.completed_at; });
   };
 
   A.applyOrder = function (type, idsInOrder) {

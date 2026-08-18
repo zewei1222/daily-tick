@@ -1,0 +1,216 @@
+/* store.js — 資料層：IndexedDB（主）＋ localStorage mirror（首屏同步渲染用）。
+   兩者不一致時以 IndexedDB 為源（SPEC §1.3）。 */
+(function (A) {
+  'use strict';
+
+  A.SCHEMA_VERSION = 1;
+
+  A.LSK = {
+    token:  'gist_token',
+    gistId: 'gist_id',
+    synced: 'last_synced_at',
+    mirror: 'mirror',
+    ui:     'ui_state'
+  };
+
+  /* ---------- localStorage 包一層，避免無痕模式丟例外 ---------- */
+  A.ls = {
+    get: function (k) { try { return localStorage.getItem(k); } catch (e) { return null; } },
+    set: function (k, v) { try { localStorage.setItem(k, v); } catch (e) {} },
+    del: function (k) { try { localStorage.removeItem(k); } catch (e) {} }
+  };
+
+  /* ---------- 預設 / 正規化 ---------- */
+  A.defaultState = function () {
+    return {
+      schema_version: A.SCHEMA_VERSION,
+      updated_at: new Date(0).toISOString(),
+      settings: { reset_hour: 4 },
+      tasks: []
+    };
+  };
+
+  function normTask(raw, index, seenIds) {
+    if (!raw || typeof raw !== 'object') return null;
+    var title = typeof raw.title === 'string' ? raw.title.trim() : '';
+    if (!title) return null;
+
+    var type = raw.type === 'daily' ? 'daily' : 'general';
+    var id = typeof raw.id === 'string' && raw.id ? raw.id : A.uuid();
+    if (seenIds[id]) id = A.uuid();
+    seenIds[id] = true;
+
+    var t = {
+      id: id,
+      type: type,
+      title: title,
+      order_index: isFinite(Number(raw.order_index)) ? Math.round(Number(raw.order_index))
+                                                     : (index + 1) * 1000,
+      created_at: typeof raw.created_at === 'string' ? raw.created_at : A.nowIso()
+    };
+
+    if (type === 'daily') {
+      var seen = {}, hist = [];
+      (Array.isArray(raw.history) ? raw.history : []).forEach(function (d) {
+        if (A.isDateStr(d) && !seen[d]) { seen[d] = true; hist.push(d); }
+      });
+      hist.sort();
+      t.history = hist;
+    } else {
+      t.completed_at = typeof raw.completed_at === 'string' && raw.completed_at
+        ? raw.completed_at : null;
+    }
+    return t;
+  }
+
+  /* 寬鬆修復：用於讀本機資料 / 已通過檢查的匯入資料 */
+  A.normalizeState = function (raw) {
+    if (!raw || typeof raw !== 'object') return null;
+    var seenIds = {};
+    return {
+      schema_version: A.SCHEMA_VERSION,
+      updated_at: typeof raw.updated_at === 'string' ? raw.updated_at
+                                                     : new Date(0).toISOString(),
+      settings: { reset_hour: A.clampHour(raw.settings && raw.settings.reset_hour) },
+      tasks: (Array.isArray(raw.tasks) ? raw.tasks : [])
+        .map(function (t, i) { return normTask(t, i, seenIds); })
+        .filter(Boolean)
+    };
+  };
+
+  /* 嚴格檢查：用於匯入與遠端資料（SPEC §6.4） */
+  A.checkPayload = function (raw) {
+    if (!raw || typeof raw !== 'object' || Array.isArray(raw)) {
+      return { ok: false, error: '格式錯誤：最外層必須是物件' };
+    }
+    if (typeof raw.schema_version !== 'number') {
+      return { ok: false, error: '格式錯誤：缺少 schema_version' };
+    }
+    if (raw.schema_version > A.SCHEMA_VERSION) {
+      return { ok: false, error: '版本不支援：資料為 v' + raw.schema_version +
+                                 '，本 App 只支援到 v' + A.SCHEMA_VERSION };
+    }
+    if (!Array.isArray(raw.tasks)) {
+      return { ok: false, error: '格式錯誤：tasks 必須是陣列' };
+    }
+    return { ok: true, state: A.normalizeState(raw) };
+  };
+
+  A.parsePayload = function (text) {
+    var raw;
+    try { raw = JSON.parse(text); }
+    catch (e) { return { ok: false, error: '不是合法的 JSON' }; }
+    return A.checkPayload(raw);
+  };
+
+  /* ---------- mirror（同步、抗強制關閉） ---------- */
+  A.readMirror = function () {
+    var s = A.ls.get(A.LSK.mirror);
+    if (!s) return null;
+    try { return A.normalizeState(JSON.parse(s)); } catch (e) { return null; }
+  };
+
+  A.writeMirror = function (state) {
+    try { A.ls.set(A.LSK.mirror, JSON.stringify(state)); } catch (e) {}
+  };
+
+  /* ---------- IndexedDB ---------- */
+  var DB_NAME = 'daily-tick', DB_VER = 1, STORE = 'state', KEY = 'app';
+  var dbPromise = null;
+
+  A.openDB = function () {
+    if (dbPromise) return dbPromise;
+    dbPromise = new Promise(function (resolve, reject) {
+      if (typeof indexedDB === 'undefined') { reject(new Error('no indexedDB')); return; }
+      var req = indexedDB.open(DB_NAME, DB_VER);
+      req.onupgradeneeded = function () {
+        var db = req.result;
+        if (!db.objectStoreNames.contains(STORE)) db.createObjectStore(STORE);
+      };
+      req.onsuccess = function () { resolve(req.result); };
+      req.onerror = function () { reject(req.error); };
+      req.onblocked = function () { reject(new Error('idb blocked')); };
+    });
+    return dbPromise;
+  };
+
+  A.idbLoad = function () {
+    return A.openDB().then(function (db) {
+      return new Promise(function (resolve, reject) {
+        var tx = db.transaction(STORE, 'readonly');
+        var req = tx.objectStore(STORE).get(KEY);
+        req.onsuccess = function () { resolve(req.result || null); };
+        req.onerror = function () { reject(req.error); };
+      });
+    });
+  };
+
+  function idbPut(state) {
+    return A.openDB().then(function (db) {
+      return new Promise(function (resolve, reject) {
+        var tx = db.transaction(STORE, 'readwrite');
+        tx.objectStore(STORE).put(state, KEY);
+        tx.oncomplete = function () { resolve(); };
+        tx.onerror = function () { reject(tx.error); };
+        tx.onabort = function () { reject(tx.error); };
+      });
+    });
+  }
+
+  /* 寫入合併：進行中就標記 dirty，結束後再寫一次最新狀態（最後一次必然落地） */
+  var writing = false, dirty = false;
+
+  function flush() {
+    writing = true;
+    idbPut(JSON.parse(JSON.stringify(A.state)))
+      .catch(function (e) { console.warn('IndexedDB 寫入失敗，已寫入 mirror', e); })
+      .then(function () {
+        writing = false;
+        if (dirty) { dirty = false; flush(); }
+      });
+  }
+
+  A.queueIdbWrite = function () {
+    if (writing) { dirty = true; return; }
+    flush();
+  };
+
+  /* ---------- 對外唯一的儲存入口 ---------- */
+  A.save = function (opts) {
+    opts = opts || {};
+    if (!A.state) return;
+    if (opts.bump !== false) A.state.updated_at = A.nowIso();
+    A.writeMirror(A.state);          /* 同步，先落地 */
+    A.queueIdbWrite();               /* 非同步，不阻塞 UI */
+    if (opts.sync !== false && A.sync) A.sync.schedulePush();
+  };
+
+  /* ---------- ui_state（分頁與捲動位置，SPEC §9.2） ---------- */
+  A.defaultUi = function () {
+    return { tab: 'daily', scroll: { daily: 0, general: 0, stats: 0 } };
+  };
+
+  A.readUiState = function () {
+    var raw = A.ls.get(A.LSK.ui);
+    var ui = A.defaultUi();
+    if (!raw) return ui;
+    try {
+      var o = JSON.parse(raw);
+      if (o && (o.tab === 'daily' || o.tab === 'general' || o.tab === 'stats')) ui.tab = o.tab;
+      if (o && o.scroll) {
+        ['daily', 'general', 'stats'].forEach(function (k) {
+          var v = Number(o.scroll[k]);
+          if (isFinite(v) && v >= 0) ui.scroll[k] = v;
+        });
+      }
+    } catch (e) {}
+    return ui;
+  };
+
+  A.writeUiState = function (ui) {
+    try { A.ls.set(A.LSK.ui, JSON.stringify(ui)); } catch (e) {}
+  };
+
+})(typeof globalThis !== 'undefined'
+   ? (globalThis.App = globalThis.App || {})
+   : (window.App = window.App || {}));

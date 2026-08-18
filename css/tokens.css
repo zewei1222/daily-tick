@@ -1,0 +1,90 @@
+/* ==========================================================================
+   tokens.css — 唯一的視覺數值來源（SPEC §4.5）
+   其餘 CSS 檔案只能引用這些變數，禁止硬編碼色值 / 邊框寬度 / 陰影 / 圓角。
+   風格方向：高對比純色背景、實線邊框、實色陰影。
+   禁止：漸層、半透明、blur、模糊陰影。
+   ========================================================================== */
+:root {
+  color-scheme: light;
+
+  /* ---- 色彩（全部為不透明實色） ---- */
+  --c-bg:            #ffffff;
+  --c-bg-sunken:     #f4f4f4;
+  --c-ink:           #111111;
+  --c-ink-2:         #5c5c5c;
+  --c-ink-3:         #8c8c8c;
+  --c-on-ink:        #ffffff;
+  --c-line:          #111111;
+  --c-line-2:        #cfcfcf;
+  --c-press:         #ebebeb;
+  --c-done-text:     #9a9a9a;
+  --c-danger:        #d0261b;
+  --c-danger-2:      #8d1109;
+  --c-on-danger:     #ffffff;
+  --c-warn:          #f2c200;
+  --c-grid-off:      #e4e4e4;
+  --c-grid-on:       #111111;
+
+  /* ---- 邊框、圓角、陰影 ---- */
+  --bw:              2px;
+  --bw-thin:         1px;
+  --r-card:          10px;
+  --r-btn:           10px;
+  --r-box:           4px;
+  --r-cell:          2px;
+  --r-pill:          999px;
+  --shadow-hard:     3px 3px 0 var(--c-line);
+  --shadow-hard-sm:  2px 2px 0 var(--c-line);
+  --press-shift:     2px;
+
+  /* ---- 間距 ---- */
+  --sp-1:  4px;
+  --sp-2:  8px;
+  --sp-3:  12px;
+  --sp-4:  16px;
+  --sp-5:  20px;
+  --sp-6:  24px;
+  --sp-8:  32px;
+  --grid-gap: 2px;
+
+  /* ---- 字型 ---- */
+  --font: -apple-system, BlinkMacSystemFont, "SF Pro TC", "PingFang TC",
+          "Noto Sans TC", "Helvetica Neue", Arial, sans-serif;
+  --font-mono: ui-monospace, SFMono-Regular, Menlo, monospace;
+  --fs-1: 13px;
+  --fs-2: 15px;
+  --fs-3: 17px;
+  --fs-4: 20px;
+  --fs-5: 30px;
+  --fw-normal: 500;
+  --fw-bold:   800;
+  --lh:        1.35;
+  --lh-tight:  1.15;
+
+  /* ---- 尺寸 ---- */
+  --header-h:      52px;
+  --tab-h:         56px;
+  --fab-size:      60px;
+  --card-min-h:    56px;
+  --check-size:    24px;
+  --hit-min:       44px;
+  --content-max:   560px;
+  --tab-mark-h:    3px;
+
+  /* ---- 左滑刪除 ---- */
+  --swipe-action-w:      96px;
+  --swipe-open-at:       44px;   /* 放手後開啟的門檻 */
+  --swipe-max-extra:     28px;   /* 允許超拉的距離 */
+  --swipe-tap-slop:      8px;    /* 判定為點擊的最大位移 */
+  --del-over-scale:      1.14;
+
+  /* ---- 動態 ---- */
+  --dur-fast:   120ms;
+  --dur-mid:    200ms;
+  --dur-slow:   240ms;
+  --ease-out:   cubic-bezier(.2, .8, .3, 1);
+  --ease-in-out: cubic-bezier(.4, 0, .2, 1);
+
+  /* ---- 執行期由 JS 覆寫（鍵盤高度，見 §7.5） ---- */
+  --kb-h: 0px;
+}

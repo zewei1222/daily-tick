@@ -9,7 +9,15 @@ html, body {
   overflow: hidden;
 }
 
+/* iOS 會為了露出 focus 的輸入框而捲動整份文件，把 position:fixed 的 sheet
+   推到可視範圍外。把 body 釘死，文件層就沒有可捲動的空間。 */
 body {
+  position: fixed;
+  top: 0;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  overscroll-behavior: none;
   display: flex;
   flex-direction: column;
   font-family: var(--font);
@@ -327,7 +335,10 @@ button {
 /* ---------- Sheet（新增/編輯、設定） ---------- */
 .sheet {
   position: fixed;
-  inset: 0;
+  left: 0;
+  right: 0;
+  top: var(--vv-top, 0px);
+  height: var(--vv-h, 100%);
   z-index: 40;
   display: flex;
   flex-direction: column;
@@ -356,7 +367,7 @@ button {
   overflow-y: auto;
   overscroll-behavior-y: contain;
   padding: var(--sp-5) var(--sp-4)
-           calc(var(--sp-8) + var(--kb-h, 0px) + env(safe-area-inset-bottom));
+           calc(var(--sp-8) + env(safe-area-inset-bottom));
 }
 .sheet-inner {
   max-width: var(--content-max);

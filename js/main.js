@@ -109,6 +109,7 @@
   }
 
   function closeSheet(el) {
+    dropKeyboard();
     el.classList.remove('is-open');
     var dur = A.token('--dur-mid', 200);
     setTimeout(function () { el.hidden = true; }, A.reducedMotion() ? 0 : dur);
@@ -248,17 +249,29 @@
     if (A.tab === 'stats') A.render.stats();
   }
 
-  /* ================= 鍵盤高度（SPEC §7.5） ================= */
-  function watchKeyboard() {
+  /* ================= 可視區域追蹤（SPEC §7.5） =================
+     鍵盤彈出時 iOS 會縮小 visual viewport，並可能把 layout viewport 往下捲。
+     Sheet 是 position:fixed，若不補償就會被推出畫面外，輸入框跟著看不見。
+     這裡把可視區域的位移與高度餵給 CSS，讓 sheet 永遠貼齊使用者真正看到的範圍。 */
+  function watchViewport() {
     var vv = window.visualViewport;
+    var root = document.documentElement;
     if (!vv) return;
     var apply = function () {
-      var kb = Math.max(0, window.innerHeight - vv.height - vv.offsetTop);
-      document.documentElement.style.setProperty('--kb-h', kb + 'px');
+      root.style.setProperty('--vv-top', vv.offsetTop + 'px');
+      root.style.setProperty('--vv-h', vv.height + 'px');
     };
     vv.addEventListener('resize', apply);
     vv.addEventListener('scroll', apply);
+    window.addEventListener('orientationchange', function () { setTimeout(apply, 100); });
     apply();
+  }
+
+  /* 關閉 sheet 時收鍵盤，並把 iOS 可能留下的文件捲動歸零 */
+  function dropKeyboard() {
+    var a = document.activeElement;
+    if (a && a.blur) a.blur();
+    if (window.scrollY || window.scrollX) window.scrollTo(0, 0);
   }
 
   /* ================= Service Worker ================= */
@@ -410,7 +423,7 @@
     restoreScroll();
 
     wire();
-    watchKeyboard();
+    watchViewport();
 
     /* 階段二：非同步讀 IndexedDB，不一致才重繪 */
     A.idbLoad().then(function (rec) {

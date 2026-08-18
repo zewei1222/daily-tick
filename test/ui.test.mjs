@@ -459,6 +459,45 @@ group('I. 版面與 tokens');
 }
 
 const realErrors = errors.filter(e => !/api\.github\.com|net::ERR_FAILED|Failed to load resource/.test(e));
+/* ================================================================= */
+group('I2 鍵盤與可視區域');
+{
+  const ctx = await browser.createBrowserContext();
+  const page = await newPage(ctx);
+  await page.goto(URL, { waitUntil: 'domcontentloaded' });
+  await addTask(page, 'daily', '改名測試');
+
+  eq('文件層不可捲動（iOS 才不會把畫面推走）', await page.evaluate(() => {
+    const el = document.scrollingElement;
+    return el.scrollHeight <= el.clientHeight && getComputedStyle(document.body).position === 'fixed';
+  }), true);
+
+  await tapEl(page, '#fab');
+  await sleep(300);
+  const full = await page.$eval('#sheet-task', s => {
+    const r = s.getBoundingClientRect(); return { top: Math.round(r.top), h: Math.round(r.height) };
+  });
+  eq('sheet 預設佔滿可視高度', full, { top: 0, h: 852 });
+
+  /* 模擬鍵盤：visual viewport 縮小並下移 */
+  await page.evaluate(() => {
+    document.documentElement.style.setProperty('--vv-top', '40px');
+    document.documentElement.style.setProperty('--vv-h', '452px');
+  });
+  await sleep(50);
+  const shrunk = await page.$eval('#sheet-task', s => {
+    const r = s.getBoundingClientRect(); return { top: Math.round(r.top), h: Math.round(r.height) };
+  });
+  eq('鍵盤彈出時 sheet 貼齊可視區域', shrunk, { top: 40, h: 452 });
+  eq('輸入框仍在可視範圍內', await page.$eval('#input-title', i => {
+    const r = i.getBoundingClientRect();
+    return r.top >= 40 && r.bottom <= 492;
+  }), true);
+  eq('sheet 內容區可捲動', await page.$eval('.sheet-body',
+     b => getComputedStyle(b).overflowY), 'auto');
+  await ctx.close();
+}
+
 console.log('\nconsole errors: ' + (realErrors.length ? JSON.stringify(realErrors, null, 1) : 'none'));
 ok('無 console 錯誤', realErrors.length === 0);
 console.log('\n' + pass + ' passed, ' + fail + ' failed');

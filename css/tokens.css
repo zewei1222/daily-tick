@@ -85,6 +85,7 @@
   --ease-out:   cubic-bezier(.2, .8, .3, 1);
   --ease-in-out: cubic-bezier(.4, 0, .2, 1);
 
-  /* ---- 執行期由 JS 覆寫（鍵盤高度，見 §7.5） ---- */
-  --kb-h: 0px;
+  /* ---- 執行期由 JS 覆寫：可視區域（visualViewport），見 §7.5 ---- */
+  --vv-top: 0px;
+  --vv-h: 100%;
 }

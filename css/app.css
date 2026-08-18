@@ -349,6 +349,17 @@ button {
 .sheet[hidden] { display: none; }
 .sheet.is-open { transform: translateY(0); }
 
+/* 開啟後要立刻叫出鍵盤的 sheet 不做位移動畫：
+   iOS 的 focus 必須發生在使用者手勢的同一個 task，不能等滑入動畫結束。
+   若此時輸入框還在畫面外，iOS 會自行捲動可視區域去露出它，
+   看起來就是「抖一下再被拉回來」。改成淡入，輸入框從第一帧就在最終位置。 */
+.sheet.is-fade {
+  transform: none;
+  opacity: 0;
+  transition: opacity var(--dur-fast) var(--ease-out);
+}
+.sheet.is-fade.is-open { opacity: 1; }
+
 .sheet-head {
   position: relative;
   flex: 0 0 auto;

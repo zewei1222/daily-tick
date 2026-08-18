@@ -257,9 +257,15 @@
     var vv = window.visualViewport;
     var root = document.documentElement;
     if (!vv) return;
+    var queued = false;
     var apply = function () {
-      root.style.setProperty('--vv-top', vv.offsetTop + 'px');
-      root.style.setProperty('--vv-h', vv.height + 'px');
+      if (queued) return;
+      queued = true;
+      requestAnimationFrame(function () {
+        queued = false;
+        root.style.setProperty('--vv-top', vv.offsetTop + 'px');
+        root.style.setProperty('--vv-h', vv.height + 'px');
+      });
     };
     vv.addEventListener('resize', apply);
     vv.addEventListener('scroll', apply);

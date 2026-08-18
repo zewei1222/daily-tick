@@ -472,7 +472,20 @@ group('I2 鍵盤與可視區域');
     return el.scrollHeight <= el.clientHeight && getComputedStyle(document.body).position === 'fixed';
   }), true);
 
+  /* 開啟瞬間輸入框就必須在最終位置（否則 iOS 會為了露出它而捲動可視區域） */
   await tapEl(page, '#fab');
+  await sleep(30);
+  const atOpen = await page.$eval('#sheet-task', s => {
+    const cs = getComputedStyle(s);
+    const r = s.getBoundingClientRect();
+    return { transform: cs.transform, top: Math.round(r.top) };
+  });
+  eq('開啟第一帧就在最終位置、無位移動畫', atOpen, { transform: 'none', top: 0 });
+  eq('輸入框在開啟瞬間已可見', await page.$eval('#input-title', i => {
+    const r = i.getBoundingClientRect();
+    return r.top > 0 && r.bottom < 452;      /* 鍵盤彈出後的可視高度內 */
+  }), true);
+
   await sleep(300);
   const full = await page.$eval('#sheet-task', s => {
     const r = s.getBoundingClientRect(); return { top: Math.round(r.top), h: Math.round(r.height) };

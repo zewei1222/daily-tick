@@ -1,0 +1,20 @@
+[
+  {
+    "id": "character",
+    "name": "角色",
+    "has_effect": true,
+    "equip_slots": 1
+  },
+  {
+    "id": "gear",
+    "name": "武裝",
+    "has_effect": true,
+    "equip_slots": 4
+  },
+  {
+    "id": "pet",
+    "name": "寵物",
+    "has_effect": false,
+    "equip_slots": 1
+  }
+]

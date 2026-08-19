@@ -1,0 +1,41 @@
+[
+  {
+    "id": "basic",
+    "name": "史萊姆",
+    "sprite": "assets/battle_basic.png",
+    "base_stats": {
+      "hp": 400,
+      "atk": 40,
+      "def": 10,
+      "speed": 8,
+      "hit_rate": 100,
+      "dodge_rate": 0
+    }
+  },
+  {
+    "id": "armored",
+    "name": "石像鬼",
+    "sprite": "assets/battle_armored.png",
+    "base_stats": {
+      "hp": 550,
+      "atk": 32,
+      "def": 30,
+      "speed": 5,
+      "hit_rate": 100,
+      "dodge_rate": 0
+    }
+  },
+  {
+    "id": "swift",
+    "name": "疾風狼",
+    "sprite": "assets/battle_swift.png",
+    "base_stats": {
+      "hp": 320,
+      "atk": 48,
+      "def": 5,
+      "speed": 14,
+      "hit_rate": 100,
+      "dodge_rate": 5
+    }
+  }
+]

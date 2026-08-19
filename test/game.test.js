@@ -89,17 +89,17 @@ A.game.spends = []; A.game.events = [{ event_id: 'x', task_id: '', task_title_sn
   currency_granted: 100000, voided: false }];
 var r = A.gacha.pull('general');
 eq('rng=0 → common', A.gc.rarity(r.item.rarity).id, 'common');
-A.gacha.rng = seq([0.949, 0.0]);        /* 0.949×100=94.9 <95 → uncommon */
+A.gacha.rng = seq([0.949, 0.0]);        /* 0.949×100=94.9 <95 → unrare */
 r = A.gacha.pull('general');
-eq('94.9% 位置 → uncommon', r.item.rarity, 'uncommon');
+eq('94.9% 位置 → unrare', r.item.rarity, 'unrare');
 A.gacha.rng = seq([0.951, 0.0]);        /* 95.1 → rare 區 */
 r = A.gacha.pull('general');
 eq('95.1% 位置 → rare（特殊裝備）', r.item.rarity, 'rare');
 A.gacha.rng = seq([0.9999, 0.0]);
 r = A.gacha.pull('general');
 eq('99.99% 位置 → mythic', r.item.rarity, 'mythic');
-ok('common/uncommon 全是普通（無效果）', A.gc.ITEMS.filter(function (it) {
-  return it.type === 'gear' && (it.rarity === 'common' || it.rarity === 'uncommon');
+ok('common/unrare 全是普通（無效果）', A.gc.ITEMS.filter(function (it) {
+  return it.type === 'gear' && (it.rarity === 'common' || it.rarity === 'unrare');
 }).every(function (it) { return it.effect === null; }));
 ok('rare/mythic 裝備全帶標籤效果', A.gc.ITEMS.filter(function (it) {
   return it.type === 'gear' && (it.rarity === 'rare' || it.rarity === 'mythic');

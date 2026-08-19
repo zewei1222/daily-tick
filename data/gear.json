@@ -1,0 +1,269 @@
+[
+  {
+    "id": "gear_001",
+    "name": "木劍",
+    "rarity": "common",
+    "slot": "weapon",
+    "sprite": "assets/gear_001.png",
+    "base_stats": {
+      "atk": 30
+    },
+    "effect": null,
+    "description": "新手的第一把劍。"
+  },
+  {
+    "id": "gear_002",
+    "name": "鐵劍",
+    "rarity": "unrare",
+    "slot": "weapon",
+    "sprite": "assets/gear_002.png",
+    "base_stats": {
+      "atk": 55
+    },
+    "effect": null,
+    "description": "比木劍好一點。真的。"
+  },
+  {
+    "id": "gear_003",
+    "name": "布帽",
+    "rarity": "common",
+    "slot": "head",
+    "sprite": "assets/gear_003.png",
+    "base_stats": {
+      "hp": 80
+    },
+    "effect": null,
+    "description": "至少能擋太陽。"
+  },
+  {
+    "id": "gear_004",
+    "name": "鐵盔",
+    "rarity": "unrare",
+    "slot": "head",
+    "sprite": "assets/gear_004.png",
+    "base_stats": {
+      "hp": 120,
+      "def": 8
+    },
+    "effect": null,
+    "description": "敲起來鏗鏗響。"
+  },
+  {
+    "id": "gear_005",
+    "name": "皮甲",
+    "rarity": "common",
+    "slot": "body",
+    "sprite": "assets/gear_005.png",
+    "base_stats": {
+      "def": 15
+    },
+    "effect": null,
+    "description": "牛皮做的，別問哪隻牛。"
+  },
+  {
+    "id": "gear_006",
+    "name": "鎖子甲",
+    "rarity": "unrare",
+    "slot": "body",
+    "sprite": "assets/gear_006.png",
+    "base_stats": {
+      "def": 25,
+      "hp": 60
+    },
+    "effect": null,
+    "description": "一環扣一環。"
+  },
+  {
+    "id": "gear_007",
+    "name": "銅戒指",
+    "rarity": "common",
+    "slot": "accessory",
+    "sprite": "assets/gear_007.png",
+    "base_stats": {
+      "atk": 12,
+      "speed": 1
+    },
+    "effect": null,
+    "description": "會在手指留下綠色痕跡。"
+  },
+  {
+    "id": "gear_008",
+    "name": "護身符",
+    "rarity": "unrare",
+    "slot": "accessory",
+    "sprite": "assets/gear_008.png",
+    "base_stats": {
+      "hp": 90,
+      "speed": 2
+    },
+    "effect": null,
+    "description": "心誠則靈。"
+  },
+  {
+    "id": "gear_101",
+    "name": "荊棘盾",
+    "rarity": "rare",
+    "slot": "body",
+    "sprite": "assets/gear_101.png",
+    "base_stats": {
+      "def": 40,
+      "hp": 150
+    },
+    "effect": {
+      "tag": "spike",
+      "trigger": "on_damage_taken",
+      "amount": 0.5
+    },
+    "description": "反傷：受擊時反彈 50% 傷害。"
+  },
+  {
+    "id": "gear_102",
+    "name": "刺蝟王之鎧",
+    "rarity": "mythic",
+    "slot": "body",
+    "sprite": "assets/gear_102.png",
+    "base_stats": {
+      "def": 80,
+      "hp": 300
+    },
+    "effect": {
+      "tag": "spike",
+      "trigger": "on_damage_taken",
+      "amount": 1.0
+    },
+    "description": "反傷：受擊時反彈 100% 傷害。"
+  },
+  {
+    "id": "gear_103",
+    "name": "火把",
+    "rarity": "rare",
+    "slot": "weapon",
+    "sprite": "assets/gear_103.png",
+    "base_stats": {
+      "atk": 70
+    },
+    "effect": {
+      "tag": "burn",
+      "trigger": "on_hit",
+      "amount": 0.15
+    },
+    "description": "燒傷：命中時疊加 1 層（每層每回合 15% 攻擊力）。"
+  },
+  {
+    "id": "gear_104",
+    "name": "熔岩之心",
+    "rarity": "mythic",
+    "slot": "accessory",
+    "sprite": "assets/gear_104.png",
+    "base_stats": {
+      "atk": 90,
+      "hp": 200
+    },
+    "effect": {
+      "tag": "burn",
+      "trigger": "on_hit",
+      "amount": 0.3
+    },
+    "description": "燒傷：命中時疊加 1 層（每層每回合 30% 攻擊力）。"
+  },
+  {
+    "id": "gear_105",
+    "name": "蝙蝠牙",
+    "rarity": "rare",
+    "slot": "weapon",
+    "sprite": "assets/gear_105.png",
+    "base_stats": {
+      "atk": 65
+    },
+    "effect": {
+      "tag": "lifesteal",
+      "trigger": "on_hit",
+      "amount": 0.2
+    },
+    "description": "吸血：回復造成傷害 20% 的生命。"
+  },
+  {
+    "id": "gear_106",
+    "name": "猩紅聖杯",
+    "rarity": "mythic",
+    "slot": "accessory",
+    "sprite": "assets/gear_106.png",
+    "base_stats": {
+      "atk": 50,
+      "hp": 250
+    },
+    "effect": {
+      "tag": "lifesteal",
+      "trigger": "on_hit",
+      "amount": 0.4
+    },
+    "description": "吸血：回復造成傷害 40% 的生命。"
+  },
+  {
+    "id": "gear_107",
+    "name": "鷹眼鏡片",
+    "rarity": "rare",
+    "slot": "head",
+    "sprite": "assets/gear_107.png",
+    "base_stats": {
+      "atk": 45
+    },
+    "effect": {
+      "tag": "crit",
+      "trigger": "passive",
+      "amount": 0.15
+    },
+    "description": "暴擊：暴擊率 +15%。"
+  },
+  {
+    "id": "gear_108",
+    "name": "弒神之瞳",
+    "rarity": "mythic",
+    "slot": "head",
+    "sprite": "assets/gear_108.png",
+    "base_stats": {
+      "atk": 85,
+      "hp": 100
+    },
+    "effect": {
+      "tag": "crit",
+      "trigger": "passive",
+      "amount": 0.3
+    },
+    "description": "暴擊：暴擊率 +30%。"
+  },
+  {
+    "id": "gear_109",
+    "name": "龜甲護符",
+    "rarity": "rare",
+    "slot": "accessory",
+    "sprite": "assets/gear_109.png",
+    "base_stats": {
+      "def": 30,
+      "hp": 120
+    },
+    "effect": {
+      "tag": "shield",
+      "trigger": "on_battle_start",
+      "amount": 0.2
+    },
+    "description": "護盾：戰鬥開始時獲得 20% 最大生命的護盾。"
+  },
+  {
+    "id": "gear_110",
+    "name": "聖光壁壘",
+    "rarity": "mythic",
+    "slot": "body",
+    "sprite": "assets/gear_110.png",
+    "base_stats": {
+      "def": 60,
+      "hp": 350
+    },
+    "effect": {
+      "tag": "shield",
+      "trigger": "on_low_hp",
+      "amount": 0.35
+    },
+    "description": "護盾：生命低於 50% 時獲得 35% 最大生命的護盾（每回合最多一次）。"
+  }
+]

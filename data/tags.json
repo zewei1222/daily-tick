@@ -1,0 +1,32 @@
+[
+  {
+    "id": "spike",
+    "name": "尖刺",
+    "sprite": "assets/tag_spike.png",
+    "description": "受到攻擊時反傷"
+  },
+  {
+    "id": "burn",
+    "name": "燒傷",
+    "sprite": "assets/tag_burn.png",
+    "description": "持續傷害，可疊加層數"
+  },
+  {
+    "id": "lifesteal",
+    "name": "吸血",
+    "sprite": "assets/tag_lifesteal.png",
+    "description": "造成傷害時吸收生命"
+  },
+  {
+    "id": "crit",
+    "name": "暴擊",
+    "sprite": "assets/tag_crit.png",
+    "description": "提升暴擊率與暴擊傷害"
+  },
+  {
+    "id": "shield",
+    "name": "護盾",
+    "sprite": "assets/tag_shield.png",
+    "description": "格擋傷害的額外血層"
+  }
+]

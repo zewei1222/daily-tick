@@ -176,7 +176,7 @@
     });
     /* 提示每難度對應的寶石（對照表在遊戲層，todo 只顯示） */
     var gems = A.gc.coinsFor(sheetType, sheetDifficulty);
-    A.$('#diff-hint').textContent = '完成一次獲得 💎' + gems;
+    A.$('#diff-hint').textContent = '完成一次獲得 ' + gems + ' 寶石';
   }
 
   function sheetRepeatPreview() {
@@ -909,7 +909,18 @@
       console.warn('IndexedDB 讀取失敗，使用 mirror', e);
     });
 
-    var gameReady = A.gstore.idbLoad().then(function (rec) {
+    var contentReady = A.gc.load().then(function () {
+      /* 目錄就緒：把首屏寬鬆收下的遊戲資料重跑一次嚴格正規化 */
+      A.game = A.gstore.normalize(A.game) || A.gstore.defaultState();
+      A.grender.resources();
+      renderTab(A.tab);
+    }).catch(function (e) {
+      console.warn('遊戲內容載入失敗（離線且無快取？）', e);
+    });
+
+    var gameReady = contentReady.then(function () {
+      return A.gstore.idbLoad();
+    }).then(function (rec) {
       var stored = rec ? A.gstore.normalize(rec) : null;
       if (!stored) {
         if (gameMirror) A.gstore.save({ bump: false });

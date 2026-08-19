@@ -90,7 +90,9 @@
 
     if (raw.items && typeof raw.items === 'object') {
       Object.keys(raw.items).forEach(function (id) {
-        if (!A.gc.item(id)) return;                 /* 目錄外的 id 直接忽略 */
+        /* 目錄外的 id 直接忽略；目錄尚未載入（首屏 mirror 階段）先全收，
+           載入完成後 main.js 會重跑一次 normalize 收斂 */
+        if (A.gc.loaded && !A.gc.item(id)) return;
         var it = raw.items[id] || {};
         var owned = int0(it.owned_count);
         if (owned < 1) return;
@@ -108,18 +110,24 @@
 
     if (raw.equipped && typeof raw.equipped === 'object') {
       var eq = raw.equipped;
-      var own = function (id, type) {
-        return typeof id === 'string' && s.items[id] &&
-               A.gc.item(id) && A.gc.item(id).type === type ? id : null;
-      };
-      s.equipped.character = own(eq.character, 'character') || 'char_001';
-      s.equipped.pet = own(eq.pet, 'pet');
-      if (eq.gear && typeof eq.gear === 'object') {
-        A.gc.GEAR_SLOTS.forEach(function (slot) {
-          var id = own(eq.gear[slot.id], 'gear');
-          if (id && A.gc.item(id).slot === slot.id) s.equipped.gear[slot.id] = id;
-          else if (slot.id !== 'weapon') s.equipped.gear[slot.id] = null;
-        });
+      if (!A.gc.loaded) {
+        /* 目錄未載入：原樣保留，等載入後重跑 normalize 驗證 */
+        s.equipped = JSON.parse(JSON.stringify(eq));
+        if (!s.equipped.gear) s.equipped.gear = { weapon: null, head: null, body: null, accessory: null };
+      } else {
+        var own = function (id, type) {
+          return typeof id === 'string' && s.items[id] &&
+                 A.gc.item(id) && A.gc.item(id).type === type ? id : null;
+        };
+        s.equipped.character = own(eq.character, 'character') || 'char_001';
+        s.equipped.pet = own(eq.pet, 'pet');
+        if (eq.gear && typeof eq.gear === 'object') {
+          A.gc.GEAR_SLOTS.forEach(function (slot) {
+            var id = own(eq.gear[slot.id], 'gear');
+            if (id && A.gc.item(id).slot === slot.id) s.equipped.gear[slot.id] = id;
+            else if (slot.id !== 'weapon') s.equipped.gear[slot.id] = null;
+          });
+        }
       }
     }
 

@@ -3,8 +3,8 @@
 用法：python3 tools_gen_assets.py"""
 from PIL import Image, ImageDraw
 
-BLACK = (0, 0, 0)            # --c-bg
-ACCENT = (158, 123, 255)     # --c-accent
+VOID = (11, 10, 18)          # --bg-void
+ACCENT = (255, 194, 75)      # --accent-gold
 
 
 def draw_check(img, cx, cy, size, color, width_ratio=0.16):
@@ -20,15 +20,15 @@ def draw_check(img, cx, cy, size, color, width_ratio=0.16):
 
 
 def icon(size, check_scale=0.58):
-    """App 圖示：亮紫底、純黑勾（在主畫面上辨識度最高）。"""
+    """App 圖示：金底、深色勾（主畫面辨識度）。"""
     img = Image.new("RGB", (size, size), ACCENT)
-    draw_check(img, size / 2, size / 2, size * check_scale, BLACK)
+    draw_check(img, size / 2, size / 2, size * check_scale, VOID)
     return img
 
 
 def splash(w, h, check_px):
-    """開機圖：必須與 App 啟動後的背景同色（純黑），否則冷啟動會閃色。"""
-    img = Image.new("RGB", (w, h), BLACK)
+    """開機圖：必須與 App 啟動後的背景同色（--bg-void），否則冷啟動會閃色。"""
+    img = Image.new("RGB", (w, h), VOID)
     draw_check(img, w / 2, h / 2, check_px, ACCENT)
     return img
 

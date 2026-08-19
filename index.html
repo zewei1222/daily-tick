@@ -5,9 +5,9 @@
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
 <title>極簡待辦</title>
 <meta name="description" content="極簡重複待辦清單與放置遊戲">
-<meta name="theme-color" content="#000000">
+<meta name="theme-color" content="#0B0A12">
 <!-- 版本標記：與 sw.js 的 CACHE_VERSION 同號，App 靠它判斷有沒有新版 -->
-<meta name="app-version" content="5">
+<meta name="app-version" content="6">
 <meta name="mobile-web-app-capable" content="yes">
 <meta name="apple-mobile-web-app-capable" content="yes">
 <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
@@ -20,6 +20,8 @@
       media="(device-width: 393px) and (device-height: 852px) and (-webkit-device-pixel-ratio: 3) and (orientation: portrait)"
       href="/daily-tick/splash/splash-1179x2556.png">
 
+<link rel="preload" href="/daily-tick/vendor/fonts/cubic11.woff2" as="font" type="font/woff2" crossorigin>
+<link rel="preload" href="/daily-tick/vendor/fonts/silkscreen.woff2" as="font" type="font/woff2" crossorigin>
 <link rel="stylesheet" href="/daily-tick/css/tokens.css">
 <link rel="stylesheet" href="/daily-tick/css/app.css">
 </head>
@@ -27,11 +29,12 @@
 
 <!-- 常駐資源列（GAME_SPEC §4b.1）：所有 tab 皆顯示，無立繪無裝飾 -->
 <header class="res-bar">
-  <span class="res-item">💎 <span class="res-num" id="res-gems">0</span></span>
-  <span class="res-item">🔧 <span class="res-num" id="res-material">0</span></span>
-  <span class="res-item">🪙 <span class="res-num" id="res-gold">0</span></span>
+  <span class="res-item is-gem"><img class="px" src="/daily-tick/assets/res_gem.png" alt="寶石"><span class="res-num" id="res-gems">0</span></span>
+  <span class="res-item"><img class="px" src="/daily-tick/assets/res_material.png" alt="素材"><span class="res-num" id="res-material">0</span></span>
+  <span class="res-item"><img class="px" src="/daily-tick/assets/res_gold.png" alt="金幣"><span class="res-num" id="res-gold">0</span></span>
   <span class="res-claim-dot" id="res-claim-dot" hidden aria-label="有待領獎勵"></span>
   <span class="res-spacer"></span>
+  <button class="btn-l3" id="btn-edit" type="button">編輯</button>
   <button class="btn-icon" id="btn-settings" type="button" aria-label="設定">
     ⚙<span class="sync-dot" id="sync-dot" hidden></span>
   </button>
@@ -43,16 +46,16 @@
   <section class="view" id="view-battle" hidden>
     <div class="view-inner">
       <div class="stage-line">
-        <span>第 <span id="stage-now">1</span> 層</span>
-        <span class="stage-max">最高通過 第 <span id="stage-max">0</span> 層</span>
+        <span>第 <span class="stage-now" id="stage-now">1</span> 層</span>
+        <span class="stage-max">最高 <span id="stage-max">0</span></span>
       </div>
 
       <div class="battle-box">
         <div class="battle-units">
-          <div class="unit is-player">
-            <div class="unit-icon" id="bu-player-icon">🥷</div>
+          <div class="unit is-player" id="unit-player">
+            <div class="unit-traits" id="bu-player-traits"></div>
+            <img class="unit-sprite" id="bu-player-sprite" alt="你" src="/daily-tick/assets/battle_char_001.png">
             <div class="unit-name">你</div>
-            <div class="unit-traits" id="bu-player-power"></div>
             <div class="hp-wrap">
               <div class="hp-track">
                 <div class="hp-fill" id="hp-player"></div>
@@ -61,11 +64,11 @@
               <div class="hp-num" id="hpnum-player"></div>
             </div>
           </div>
-          <div class="vs">VS</div>
-          <div class="unit is-monster">
-            <div class="unit-icon" id="bu-monster-icon">❓</div>
-            <div class="unit-name" id="bu-monster-name">—</div>
+          <div class="round-counter" id="round-counter">R 0</div>
+          <div class="unit is-monster" id="unit-monster">
             <div class="unit-traits" id="bu-monster-traits"></div>
+            <img class="unit-sprite" id="bu-monster-sprite" alt="怪物" src="/daily-tick/assets/battle_basic.png">
+            <div class="unit-name" id="bu-monster-name">—</div>
             <div class="hp-wrap">
               <div class="hp-track">
                 <div class="hp-fill" id="hp-monster"></div>
@@ -79,17 +82,17 @@
       </div>
 
       <div class="battle-actions">
-        <button class="btn is-primary" id="btn-fight" type="button">挑戰此層</button>
-        <button class="btn" id="btn-auto" type="button">自動刷關</button>
-        <button class="btn" id="btn-skip" type="button" hidden>跳過動畫</button>
+        <button class="btn-l2" id="btn-fight" type="button">挑戰此層</button>
+        <button class="btn-l2" id="btn-auto" type="button">自動刷關</button>
+        <button class="btn-l3" id="btn-skip" type="button" hidden>跳過</button>
       </div>
 
       <div class="pending-box">
-        <span>待領　<span class="pending-nums" id="pending-nums">🔧 0　🪙 0</span></span>
-        <button class="btn is-primary" id="btn-claim" type="button">領取</button>
+        <span class="pending-nums" id="pending-nums"></span>
+        <button class="btn-l2" id="btn-claim" type="button">領取</button>
       </div>
 
-      <button class="gacha-entry" id="btn-gacha-open" type="button">🔮 招募（抽卡）</button>
+      <button class="btn-l1 gacha-entry" id="btn-gacha-open" type="button">招募（抽卡）</button>
     </div>
   </section>
 
@@ -119,7 +122,6 @@
           <button type="button" data-pane="daily" aria-pressed="true">日常</button>
           <button type="button" data-pane="general" aria-pressed="false">一般</button>
         </div>
-        <button class="btn-text" id="btn-edit" type="button">編輯</button>
       </div>
       <div class="pane" id="pane-daily">
         <ul class="list" id="list-daily"></ul>
@@ -129,7 +131,7 @@
         <ul class="list" id="list-general"></ul>
         <p class="empty" id="empty-general" hidden></p>
         <div class="list-foot" id="foot-general" hidden>
-          <button class="btn is-block" id="btn-clear-done" type="button">清除已完成</button>
+          <button class="btn-l2" id="btn-clear-done" type="button">清除已完成</button>
         </div>
       </div>
     </div>
@@ -159,29 +161,26 @@
 
 <!-- 新增 / 編輯任務 -->
 <div class="sheet is-fade" id="sheet-task" hidden role="dialog" aria-modal="true">
-
-  <div class="sheet-hero">
-    <div class="sheet-head">
-      <button class="btn-pill" data-act="cancel" type="button">取消</button>
-      <span class="sheet-title" id="sheet-task-title">新增日常任務</span>
-      <button class="btn-pill" data-act="save" id="btn-task-save" type="button">創建</button>
-    </div>
-    <div class="hero-body">
-      <div class="hero-field">
-        <label class="hero-label" for="input-title">標題</label>
-        <input class="input-pill" id="input-title" type="text" maxlength="80"
-               autocomplete="off" autocapitalize="sentences" enterkeyhint="next">
-      </div>
-      <div class="hero-field">
-        <label class="hero-label" for="input-note">敘述</label>
-        <textarea class="input-pill" id="input-note" rows="2" maxlength="140"
-                  autocomplete="off" autocapitalize="sentences"></textarea>
-      </div>
-    </div>
+  <div class="sheet-head">
+    <button class="btn-l3" data-act="cancel" type="button">取消</button>
+    <span class="sheet-title" id="sheet-task-title">新增日常任務</span>
+    <button class="btn-l2" data-act="save" id="btn-task-save" type="button">創建</button>
   </div>
-
   <div class="sheet-body">
     <div class="sheet-inner">
+
+      <div class="group">
+        <div class="field">
+          <label class="label" for="input-title">標題</label>
+          <input class="input" id="input-title" type="text" maxlength="80"
+                 autocomplete="off" autocapitalize="sentences" enterkeyhint="next">
+        </div>
+        <div class="field">
+          <label class="label" for="input-note">敘述</label>
+          <textarea class="input" id="input-note" rows="2" maxlength="140"
+                    autocomplete="off" autocapitalize="sentences"></textarea>
+        </div>
+      </div>
 
       <div class="group" id="group-type">
         <span class="group-title">類型</span>
@@ -194,11 +193,11 @@
       <div class="group" id="group-difficulty">
         <span class="group-title">難度</span>
         <div class="diff-seg" id="seg-difficulty">
-          <button type="button" data-diff="1" aria-pressed="true">✦</button>
-          <button type="button" data-diff="2" aria-pressed="false">✦✦</button>
-          <button type="button" data-diff="3" aria-pressed="false">✦✦✦</button>
-          <button type="button" data-diff="4" aria-pressed="false">✧✧</button>
-          <button type="button" data-diff="5" aria-pressed="false">✧✧✧</button>
+          <button type="button" data-diff="1" aria-pressed="true"><i></i></button>
+          <button type="button" data-diff="2" aria-pressed="false"><i></i><i></i></button>
+          <button type="button" data-diff="3" aria-pressed="false"><i></i><i></i><i></i></button>
+          <button type="button" data-diff="4" aria-pressed="false"><i></i><i></i><i></i><i></i></button>
+          <button type="button" data-diff="5" aria-pressed="false"><i></i><i></i><i></i><i></i><i></i></button>
         </div>
         <p class="hint" id="diff-hint"></p>
       </div>
@@ -236,22 +235,24 @@
 <!-- 抽卡 -->
 <div class="sheet" id="sheet-gacha" hidden role="dialog" aria-modal="true">
   <div class="sheet-head">
-    <button class="btn-text head-l" data-act="close" type="button">返回</button>
+    <button class="btn-l3" data-act="close" type="button">返回</button>
     <span class="sheet-title">招募</span>
-    <span class="head-r"></span>
+    <span></span>
   </div>
   <div class="sheet-body">
     <div class="sheet-inner">
       <div class="group">
         <span class="group-title" id="gacha-pool-name">通用招募</span>
-        <p class="status-line"><span class="status-value">💎 <span id="gacha-gems">0</span></span></p>
+        <p class="status-line"><img class="px" src="/daily-tick/assets/res_gem.png" alt="寶石"
+           width="32" height="32"><span class="status-value num" id="gacha-gems"
+          >0</span></p>
         <div class="pity-line">
           <span>稀有保底 <span id="pity-rare">0</span>/<span id="pity-rare-max">35</span></span>
           <span>神話保底 <span id="pity-mythic">0</span>/<span id="pity-mythic-max">200</span></span>
         </div>
         <div class="btn-row is-spaced">
-          <button class="btn is-primary" id="btn-pull-1" type="button">單抽（💎5）</button>
-          <button class="btn" id="btn-pull-10" type="button">十連（💎50）</button>
+          <button class="btn-l2" id="btn-pull-1" type="button">單抽 ×5</button>
+          <button class="btn-l2" id="btn-pull-10" type="button">十連 ×50</button>
         </div>
         <p class="hint">稀有以上 5%（稀有 4.5%、神話 0.5%）。重複抽中會提升該項目的等級上限。</p>
       </div>
@@ -263,9 +264,9 @@
 <!-- 設定 -->
 <div class="sheet" id="sheet-settings" hidden role="dialog" aria-modal="true">
   <div class="sheet-head">
-    <button class="btn-text head-l" data-act="close" type="button">返回</button>
+    <button class="btn-l3" data-act="close" type="button">返回</button>
     <span class="sheet-title">設定</span>
-    <span class="head-r"></span>
+    <span></span>
   </div>
   <div class="sheet-body">
     <div class="sheet-inner">
@@ -292,7 +293,7 @@
         <p class="hint" id="sync-detail"></p>
         <p class="hint">備份含兩個檔案：todo-backup.json 與 game-backup.json，存於同一個 private gist。</p>
         <div class="btn-row is-spaced">
-          <button class="btn" id="btn-sync-now" type="button">立即同步</button>
+          <button class="btn-l2" id="btn-sync-now" type="button">立即同步</button>
         </div>
       </div>
 
@@ -301,25 +302,25 @@
         <input class="input" id="input-pat" type="password" autocomplete="off"
                autocapitalize="none" spellcheck="false" placeholder="ghp_...">
         <div class="btn-row is-spaced">
-          <button class="btn is-primary" id="btn-pat-save" type="button">儲存並同步</button>
-          <button class="btn is-danger" id="btn-pat-clear" type="button">移除</button>
+          <button class="btn-l2" id="btn-pat-save" type="button">儲存並同步</button>
+          <button class="btn-l2 is-danger" id="btn-pat-clear" type="button">移除</button>
         </div>
         <p class="hint">Token 只存在這台裝置，不會寫進備份或匯出檔。</p>
       </div>
 
       <div class="group">
         <span class="group-title">匯出（任務資料）</span>
-        <textarea class="input" id="ta-export" readonly rows="4"></textarea>
+        <textarea class="input is-mono" id="ta-export" readonly rows="4"></textarea>
         <div class="btn-row is-spaced">
-          <button class="btn" id="btn-export-copy" type="button">複製</button>
+          <button class="btn-l2" id="btn-export-copy" type="button">複製</button>
         </div>
       </div>
 
       <div class="group">
         <label class="group-title" for="ta-import">匯入（會覆蓋現有任務資料）</label>
-        <textarea class="input" id="ta-import" rows="4" autocapitalize="none" spellcheck="false"></textarea>
+        <textarea class="input is-mono" id="ta-import" rows="4" autocapitalize="none" spellcheck="false"></textarea>
         <div class="btn-row is-spaced">
-          <button class="btn is-danger" id="btn-import" type="button">匯入並覆蓋</button>
+          <button class="btn-l2 is-danger" id="btn-import" type="button">匯入並覆蓋</button>
         </div>
       </div>
 
@@ -331,7 +332,7 @@
 
 <div class="update-bar" id="update-bar" hidden>
   <span>有新版本</span>
-  <button id="btn-reload" type="button">重新載入</button>
+  <button class="btn-l2" id="btn-reload" type="button">重新載入</button>
 </div>
 
 <div class="toast" id="toast" hidden></div>

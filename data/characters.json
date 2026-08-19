@@ -1,0 +1,22 @@
+[
+  {
+    "id": "char_001",
+    "name": "掃地僧",
+    "rarity": "rare",
+    "sprite": "assets/char_001.png",
+    "battle_sprite": "assets/battle_char_001.png",
+    "base_stats": {
+      "atk": 100,
+      "hp": 500,
+      "def": 20,
+      "speed": 10,
+      "hit_rate": 100,
+      "dodge_rate": 0
+    },
+    "passive": {
+      "tag": "spike",
+      "multiplier": 2.0
+    },
+    "description": "看似平凡。被打到的人才知道痛。"
+  }
+]

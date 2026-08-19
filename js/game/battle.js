@@ -10,9 +10,22 @@
 
   B.rng = Math.random;   /* 可注入以便測試 */
 
+  /* mulberry32：以層數為種子的 PRNG。
+     詞綴由層數決定而非每場重骰 → 對戰畫面的「此層怪物預覽」與實戰必然一致，
+     且同一層重打不會換詞綴（玩家可以針對性換裝，正是核心迴圈要的）。 */
+  function seededRng(seed) {
+    var t = seed >>> 0;
+    return function () {
+      t += 0x6D2B79F5;
+      var r = Math.imul(t ^ (t >>> 15), 1 | t);
+      r = (r + Math.imul(r ^ (r >>> 7), 61 | r)) ^ r;
+      return ((r ^ (r >>> 14)) >>> 0) / 4294967296;
+    };
+  }
+
   /* ================= 怪物生成（§4.3，公式生成，不手動設計） ================= */
   B.monsterFor = function (stage, rng) {
-    rng = rng || B.rng;
+    rng = rng || seededRng(stage * 2654435761);
     var tpl = A.gc.MONSTER_TEMPLATES[(stage - 1) % A.gc.MONSTER_TEMPLATES.length];
     var m = A.gc.growthAt(stage);
     var stats = {};
@@ -38,7 +51,7 @@
     return {
       monster_template: tpl.id,
       name: tpl.name,
-      icon: tpl.icon,
+      sprite: tpl.sprite,
       level: stage,
       base_stats: stats,
       traits: traits
@@ -149,7 +162,7 @@
     mDef.traits.forEach(function (t) {
       if (t.type === 'resist') player.resists[t.tag] = 0;   /* 佔位，實際掛在下面 */
     });
-    var monster = makeUnit(mDef.name, mDef.icon, mDef.base_stats, [], 'monster');
+    var monster = makeUnit(mDef.name, mDef.sprite, mDef.base_stats, [], 'monster');
     mDef.traits.forEach(function (t) {
       if (t.type === 'resist') monster.resists[t.tag] = t.value;
       else {
@@ -268,8 +281,8 @@
     }
 
     /* ---- 戰鬥開始 ---- */
-    push('battle_start', player, { monster: { name: mDef.name, icon: mDef.icon, level: mDef.level,
-                                              traits: mDef.traits } });
+    push('battle_start', player, { monster: { name: mDef.name, sprite: mDef.sprite,
+                                              level: mDef.level, traits: mDef.traits } });
     fire(player, 'on_battle_start', {});
     fire(monster, 'on_battle_start', {});
 

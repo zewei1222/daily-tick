@@ -1,0 +1,16 @@
+[
+  {
+    "id": "pet_001",
+    "name": "石頭龜",
+    "rarity": "common",
+    "sprite": "assets/pet_001.png",
+    "base_stats": {
+      "atk": 20,
+      "hp": 100,
+      "def": 5,
+      "speed": 2
+    },
+    "effect": null,
+    "description": "走得慢，但很硬。"
+  }
+]

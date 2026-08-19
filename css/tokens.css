@@ -1,35 +1,72 @@
 /* ==========================================================================
-   tokens.css — 唯一的視覺數值來源
-   其餘 CSS 只能引用這些變數，禁止硬編碼色值 / 圓角 / 間距 / 動畫時間。
-
-   規範：純色深色模式。全域純黑背景、純色深紫模態、高對比深色卡片。
-   禁止：漸層、透明度（rgba）、blur、模糊陰影、任何形式的邊框描邊。
-   版面一律以純色色塊切割，不靠線條。
+   tokens.css — 唯一的視覺數值來源（VISUAL_SPEC.md 全文取代舊規範）
+   其餘 CSS 只能引用這些變數。數值不可自行改動或發明。
+   禁止：漸層、blur、opacity 造層次、超規圓角、emoji 當遊戲圖示。
    ========================================================================== */
+
+/* ---- 像素字體（VISUAL_SPEC §2）----
+   Cubic 11：開源 zh-TW 點陣字體（OFL），本地檔案。
+   Silkscreen：數字專用像素字體（OFL）。 */
+@font-face {
+  font-family: 'Cubic 11';
+  src: url('../vendor/fonts/cubic11.woff2') format('woff2');
+  font-display: swap;
+}
+@font-face {
+  font-family: 'Silkscreen';
+  src: url('../vendor/fonts/silkscreen.woff2') format('woff2');
+  font-display: swap;
+}
+
 :root {
   color-scheme: dark;
 
-  /* ---- 色彩（全部不透明實色） ---- */
-  --c-bg:           #000000;   /* 全局背景 */
-  --c-modal:        #5E35B1;   /* 模態視窗主色塊 */
-  --c-surface:      #1C1C1E;   /* 卡片與區塊群組 */
-  --c-surface-2:    #2C2C2E;   /* 控制項底色：未選中的圓框、列值、按壓態 */
-  --c-ink:          #FFFFFF;   /* 主文字 */
-  --c-ink-2:        #A09FA5;   /* 次要文字（單一明度，不再混用其他灰） */
-  --c-accent:       #9E7BFF;   /* 強調色：選中、亮點、輸入框 */
-  --c-on-accent:    #000000;   /* 疊在強調色上的文字 */
-  --c-on-modal:     #FFFFFF;   /* 疊在模態主色上的文字 */
-  --c-hint-accent:  #5E35B1;   /* 強調色底上的提示文字（placeholder） */
-  --c-danger:       #FF453A;
-  --c-danger-2:     #C62A20;   /* 超過刪除門檻 */
-  --c-on-danger:    #FFFFFF;
+  /* ---- 基底（三段高度，§1）---- */
+  --bg-void:      #0B0A12;   /* 最底層：畫面背景 */
+  --bg-panel:     #16141F;   /* 面板 */
+  --bg-raised:    #221E2E;   /* 面板中的凸起元素（格位、列） */
 
-  /* ---- 圓角（無邊框，形狀靠色塊與圓角） ---- */
-  --r-lg:    24px;   /* 大區塊、彈出視窗 */
-  --r-md:    16px;   /* 卡片、區塊群組 */
-  --r-sm:    12px;   /* 分段按鈕 */
-  --r-pill:  999px;  /* 輸入框、按鈕、圓框 */
-  --r-cell:  3px;    /* 統計格子 */
+  /* ---- 邊框與線條 ---- */
+  --line-hard:    #3A3450;   /* 一般邊框 */
+  --line-bright:  #6E5FA0;   /* 選中／作用中邊框 */
+
+  /* ---- 文字 ---- */
+  --text-primary: #F2EFFF;
+  --text-dim:     #8B84A3;
+  --text-disabled:#4A4459;
+
+  /* ---- 唯一暖色強調（嚴格限定：寶石數字與抽卡按鈕，§4）---- */
+  --accent-gold:  #FFC24B;
+  --on-gold:      #0B0A12;
+
+  /* ---- 語意色 ---- */
+  --hp:           #E8455F;
+  --danger:       #E8455F;
+  --success:      #4BD96A;
+
+  /* ---- 稀有度色（只用於稀有度，§1）---- */
+  --rarity-common: #8B8B9A;
+  --rarity-unrare: #4BD96A;
+  --rarity-rare:   #4B9BFF;
+  --rarity-mythic: #FF8A3D;
+
+  /* ---- 字體（§2）---- */
+  --font-body: 'Cubic 11', 'Zpix', system-ui, sans-serif;
+  --font-numeric: 'Silkscreen', 'Press Start 2P', monospace;
+  /* 字級只用這五階 */
+  --fs-10: 10px;
+  --fs-12: 12px;
+  --fs-14: 14px;
+  --fs-18: 18px;
+  --fs-28: 28px;
+  --lh: 1.5;
+
+  /* ---- 形狀（§3）---- */
+  --radius:        0px;
+  --radius-task:   4px;     /* 任務卡片唯一例外 */
+  --border-width:  2px;
+  --shadow-offset: 4px;
+  --shadow-hard:   4px 4px 0 var(--bg-void);
 
   /* ---- 間距 ---- */
   --sp-1:  4px;
@@ -39,51 +76,40 @@
   --sp-5:  20px;
   --sp-6:  24px;
   --sp-8:  32px;
-  --grid-gap: 2px;
-
-  /* ---- 字型 ---- */
-  --font: -apple-system, BlinkMacSystemFont, "SF Pro TC", "PingFang TC",
-          "Noto Sans TC", "Helvetica Neue", Arial, sans-serif;
-  --font-mono: ui-monospace, SFMono-Regular, Menlo, monospace;
-  --fs-1: 13px;   /* 註釋、次要資訊：比標題小 1~2 級 */
-  --fs-2: 15px;
-  --fs-3: 17px;   /* 卡片標題 */
-  --fs-4: 20px;
-  --fs-5: 30px;
-  --fw-normal: 500;
-  --fw-bold:   800;
-  --lh:        1.35;
-  --lh-tight:  1.15;
 
   /* ---- 尺寸 ---- */
-  --header-h:      52px;
+  --res-bar-h:     44px;
   --tab-h:         56px;
-  --fab-size:      60px;
-  --card-min-h:    60px;
-  --check-size:    26px;
+  --fab-size:      56px;
+  --card-min-h:    56px;
+  --check-size:    24px;
   --hit-min:       44px;
   --content-max:   560px;
-  --tab-mark-h:    3px;
-  --input-h:       52px;
+  --input-h:       48px;
 
-  /* ---- 左滑刪除 ---- */
+  /* ---- sprite 顯示尺寸（§6.2；一律為邏輯格的整數倍）---- */
+  --sprite-16:     32px;    /* 資源、標籤、欄位圖示（16 格 ×2） */
+  --sprite-cell:   64px;    /* 背包／圖鑑格（16 格 ×4） */
+  --sprite-battle: 128px;   /* 戰鬥立繪（32 格 ×4） */
+  --cell-outer:    80px;    /* 圖鑑格外框（64 + 8×2 內距） */
+  --slot-outer:    48px;    /* 裝備欄位格（32 + 8×2 內距） */
+  --diff-sq:       8px;     /* 難度方塊 */
+  --corner-tri:    8px;     /* 稀有度框角標（4px 邏輯 ≒ 8 css） */
+
+  /* ---- 左滑刪除（沿用既有互動參數）---- */
   --swipe-action-w:      96px;
   --swipe-open-at:       44px;
   --swipe-max-extra:     28px;
   --swipe-tap-slop:      8px;
-  --del-over-scale:      1.14;
+  --del-over-scale:      1.08;
 
-  /* ---- 動態 ---- */
+  /* ---- 動態（transition 上限 250ms，§3）---- */
   --dur-fast:   120ms;
   --dur-mid:    200ms;
   --dur-slow:   240ms;
   --ease-out:   cubic-bezier(.2, .8, .3, 1);
-  --ease-in-out: cubic-bezier(.4, 0, .2, 1);
-  --press-scale: 0.97;
 
-  /* ---- 執行期由 JS 覆寫（visualViewport） ----
-     --kb-h  鍵盤高度，只用於內容區的底部留白
-     --vv-top 極少數情況 iOS 仍搬動可視區域時的補償量 */
+  /* ---- 執行期由 JS 覆寫（visualViewport）---- */
   --kb-h: 0px;
   --vv-top: 0px;
 }

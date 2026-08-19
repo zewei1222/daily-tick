@@ -75,12 +75,13 @@
 
     var card = A.el('div', 'card');
     var check = A.el('span', 'check');
-    check.appendChild(A.el('span', 'check-mark', '✓'));
+    check.appendChild(A.el('span', 'check-mark'));   /* 實心方塊，非打勾字元 */
     card.appendChild(check);
 
     var main = A.el('span', 'card-main');
     main.appendChild(A.el('span', 'card-title'));
     main.appendChild(A.el('span', 'card-note'));
+    main.appendChild(A.el('span', 'diff-dots'));     /* 難度 1–5 金色方塊 */
     card.appendChild(main);
 
     card.appendChild(A.el('span', 'badge'));
@@ -104,6 +105,14 @@
     var note = task.note || '';
     if (noteEl.textContent !== note) noteEl.textContent = note;
     noteEl.hidden = !note;
+
+    /* 難度方塊（VISUAL_SPEC §7）：數量 = difficulty */
+    var dots = A.$('.diff-dots', row);
+    var want = Math.min(5, Math.max(1, task.difficulty || 1));
+    if (dots.children.length !== want) {
+      dots.textContent = '';
+      for (var di = 0; di < want; di++) dots.appendChild(A.el('i'));
+    }
 
     var done = A.isDone(task);
     card.classList.toggle('is-done', done);
@@ -173,6 +182,7 @@
   /* ---------- Tab / 子分段 / FAB ---------- */
   R.chrome = function () {
     els.btnEdit.textContent = A.mode === 'edit' ? '完成' : '編輯';
+    els.btnEdit.classList.toggle('is-invisible', A.tab !== 'tasks');   /* 編輯只屬於任務分頁 */
     els.fab.hidden = A.tab !== 'tasks' || A.mode === 'edit';
 
     els.tabs.forEach(function (b) {

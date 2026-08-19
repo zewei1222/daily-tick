@@ -897,42 +897,46 @@ group('I. 版面與 tokens');
   ok('I1 FAB 不壓在 Tab 上', layout.fabOverTab, layout);
   eq('I3 內容區可捲動', await page.$eval('#view-tasks',
      v => getComputedStyle(v).overflowY), 'auto');
-  eq('全局背景為純黑', await page.$eval('body', b => getComputedStyle(b).backgroundColor),
-     'rgb(0, 0, 0)');
-  eq('卡片為高對比深色，無透明度', await page.$eval('#list-daily .card',
-     c => getComputedStyle(c).backgroundColor), 'rgb(28, 28, 30)');
-  eq('無半透明遮罩：sheet 背景為實色純黑',
-     await page.$eval('#sheet-task', s => getComputedStyle(s).backgroundColor), 'rgb(0, 0, 0)');
-  eq('模態主色塊為純色深紫', await page.$eval('.sheet-hero',
-     h => getComputedStyle(h).backgroundColor), 'rgb(94, 53, 177)');
-  eq('膠囊輸入框為強調紫底黑字', await page.$eval('#input-title', i => {
-    const cs = getComputedStyle(i);
-    return [cs.backgroundColor, cs.color, cs.borderTopWidth];
-  }), ['rgb(158, 123, 255)', 'rgb(0, 0, 0)', '0px']);
-  ok('I6 卡片無模糊陰影', await page.$eval('#list-daily .card',
-     c => getComputedStyle(c).boxShadow === 'none'));
-  eq('全介面無任何邊框', await page.evaluate(() => {
-    const bad = [];
-    document.querySelectorAll('*').forEach(el => {
-      const cs = getComputedStyle(el);
-      ['Top', 'Right', 'Bottom', 'Left'].forEach(side => {
-        if (parseFloat(cs['border' + side + 'Width']) > 0 &&
-            cs['border' + side + 'Style'] !== 'none') bad.push(el.className || el.tagName);
+  eq('全局背景為 --bg-void（禁止純黑，VISUAL_SPEC §9）',
+     await page.$eval('body', b => getComputedStyle(b).backgroundColor), 'rgb(11, 10, 18)');
+  eq('卡片為 --bg-raised 實色', await page.$eval('#list-daily .card',
+     c => getComputedStyle(c).backgroundColor), 'rgb(34, 30, 46)');
+  eq('sheet 為 --bg-void 實色',
+     await page.$eval('#sheet-task', s => getComputedStyle(s).backgroundColor), 'rgb(11, 10, 18)');
+  eq('卡片 2px 實線框 + 4px 圓角（唯一例外）', await page.$eval('#list-daily .card', c => {
+    const cs = getComputedStyle(c);
+    return [cs.borderTopWidth, cs.borderTopStyle, cs.borderRadius];
+  }), ['2px', 'solid', '4px']);
+  ok('I6 無模糊陰影（只允許實色偏移）', await page.evaluate(() => {
+    return Array.from(document.querySelectorAll('*')).every(el => {
+      const bs = getComputedStyle(el).boxShadow;
+      if (bs === 'none') return true;
+      /* blur 值必須為 0px：格式 rgb(...) Xpx Ypx BLURpx SPREADpx */
+      return bs.split('),').every(part => {
+        const m = part.match(/(-?[\d.]+px)\s+(-?[\d.]+px)\s+(-?[\d.]+px)/);
+        return !m || m[3] === '0px';
       });
     });
-    return bad.slice(0, 5);
-  }), []);
-  ok('無 rgba 透明色出現在實際樣式上', await page.evaluate(() => {
-    const els = Array.from(document.querySelectorAll('*'));
-    return els.every(el => {
-      const cs = getComputedStyle(el);
-      return !/rgba\((?!0, 0, 0, 0\))/.test(cs.backgroundColor + cs.color);
-    });
   }));
+  ok('V3 無漸層', await page.evaluate(() =>
+    Array.from(document.querySelectorAll('*')).every(el =>
+      getComputedStyle(el).backgroundImage.indexOf('gradient') < 0)));
+  ok('V2 圓角只有 0 與 4px', await page.evaluate(() =>
+    Array.from(document.querySelectorAll('*')).every(el => {
+      const r = getComputedStyle(el).borderRadius;
+      return r === '0px' || r === '4px' || r === '';
+    })));
+  ok('V8 資源列數字用像素數字字體', await page.$eval('#res-gems', e =>
+    getComputedStyle(e.parentElement).fontFamily.indexOf('Silkscreen') >= 0));
+  ok('V1 遊戲圖示為 sprite 圖檔非 emoji', await page.evaluate(() =>
+    document.querySelectorAll('.res-bar img.px').length === 3));
+  eq('寶石數字為金色（§4 金色限定用途）', await page.$eval('.res-item.is-gem .res-num',
+     e => getComputedStyle(e).color), 'rgb(255, 194, 75)');
   ok('I5 tokens 有定義主要變數', await page.evaluate(() => {
     const cs = getComputedStyle(document.documentElement);
-    return ['--c-bg', '--c-modal', '--c-surface', '--c-accent', '--c-ink-2',
-            '--r-lg', '--r-md', '--r-pill', '--dur-mid', '--swipe-action-w']
+    return ['--bg-void', '--bg-panel', '--bg-raised', '--line-hard', '--line-bright',
+            '--accent-gold', '--rarity-mythic', '--font-numeric', '--radius-task',
+            '--shadow-offset', '--swipe-action-w']
       .every(k => cs.getPropertyValue(k).trim() !== '');
   }));
   await ctx.close();
@@ -950,13 +954,13 @@ group('遊戲層：難度 / 貨幣 / 資源列');
   await sleep(250);
   eq('新增預設難度 1', await page.$eval('#seg-difficulty [aria-pressed="true"]',
      b => b.dataset.diff), '1');
-  eq('提示每日難度 1 = 💎1', await page.$eval('#diff-hint', e => e.textContent), '完成一次獲得 💎1');
+  eq('提示每日難度 1 = 1 寶石', await page.$eval('#diff-hint', e => e.textContent), '完成一次獲得 1 寶石');
   await tapEl(page, '#seg-difficulty [data-diff="4"]');
   await sleep(80);
-  eq('切難度 4 提示 💎4', await page.$eval('#diff-hint', e => e.textContent), '完成一次獲得 💎4');
+  eq('切難度 4 提示 4 寶石', await page.$eval('#diff-hint', e => e.textContent), '完成一次獲得 4 寶石');
   await tapEl(page, '#seg-type button[data-type="general"]');
   await sleep(80);
-  eq('一般任務難度 4 = 💎8', await page.$eval('#diff-hint', e => e.textContent), '完成一次獲得 💎8');
+  eq('一般任務難度 4 = 8 寶石', await page.$eval('#diff-hint', e => e.textContent), '完成一次獲得 8 寶石');
   await tapEl(page, '#seg-type button[data-type="daily"]');
   await sleep(80);
   await page.$eval('#input-title', i => { i.value = '重訓'; });
@@ -1051,7 +1055,7 @@ group('遊戲層：抽卡 / 背包 / 圖鑑 / 對戰');
   await sleep(400);
   eq('十連顯示 10 張', await page.$$eval('#pull-result .pull-card', cs => cs.length), 10);
   ok('重複抽中顯示上限提升', await page.$$eval('#pull-result .pull-card .pc-tag',
-     ts => ts.some(t => t.textContent.indexOf('上限→') >= 0)));
+     ts => ts.some(t => t.textContent.indexOf('cap ') >= 0)));
   eq('保底計數器顯示', await page.$eval('#pity-rare', e => e.textContent), '11');
   await tapEl(page, '#sheet-gacha [data-act="close"]');
   await sleep(300);
@@ -1060,8 +1064,19 @@ group('遊戲層：抽卡 / 背包 / 圖鑑 / 對戰');
   await tapEl(page, '.tab[data-tab="bag"]');
   await sleep(300);
   ok('擁有頁列出初始三件以上', await page.$$eval('#pane-owned .item-row', rs => rs.length >= 3));
-  ok('裝備中摘要含角色', await page.$eval('.equip-summary', e =>
-     e.textContent.indexOf('掃地僧') >= 0));
+  eq('裝備欄位列 6 格（角/武/頭/身/飾/寵）',
+     await page.$$eval('.equip-slots .equip-slot', ss => ss.length), 6);
+  ok('已裝備的格顯示 sprite、空格顯示虛線與部位圖示', await page.evaluate(() => {
+    const slots = Array.from(document.querySelectorAll('.equip-slots .equip-slot'));
+    const filled = slots.filter(s => s.classList.contains('is-filled'));
+    const empty = slots.filter(s => s.classList.contains('is-empty'));
+    return filled.length === 3 && empty.length === 3 &&
+           empty.every(s => getComputedStyle(s).borderTopStyle === 'dashed' &&
+                            s.querySelector('img')) &&
+           filled.every(s => s.querySelector('img'));
+  }));
+  ok('每個擁有項目套稀有度框', await page.evaluate(() =>
+     document.querySelectorAll('#pane-owned .item-row .rframe').length >= 3));
   /* 強化（先確保資源足夠：Lv1 → 2 需 🔧5 🪙20） */
   await page.evaluate(() => {
     App.game.resources.material += 100; App.game.resources.gold += 100;
@@ -1085,7 +1100,12 @@ group('遊戲層：抽卡 / 背包 / 圖鑑 / 對戰');
   await sleep(200);
   const gearCells = await page.$$eval('#dex-grid .dex-cell', cs => cs.length);
   eq('武裝圖鑑 18 格（8 普通 + 10 特殊）', gearCells, 18);
-  ok('未擁有顯示灰階', await page.$$eval('#dex-grid .dex-cell.is-unowned', cs => cs.length > 0));
+  ok('未擁有顯示灰階框', await page.evaluate(() => {
+    const un = document.querySelectorAll('#dex-grid .rframe.is-unowned');
+    if (!un.length) return false;
+    /* 灰階由 filter 實現、角標仍為稀有度色 */
+    return getComputedStyle(un[0].querySelector('img')).filter.indexOf('grayscale') >= 0;
+  }));
   /* 篩選：尖刺流派 = 2 件 */
   await page.select('#dex-tag', 'spike');
   await sleep(200);
@@ -1102,7 +1122,13 @@ group('遊戲層：抽卡 / 背包 / 圖鑑 / 對戰');
   await page.$eval('#dex-q', i => { i.value = ''; i.dispatchEvent(new Event('input', {bubbles:true})); });
   await sleep(200);
   /* 詳情面板：未擁有一樣顯示完整資訊 */
-  await tapEl(page, '#dex-grid .dex-cell.is-unowned');
+  await page.evaluate(() => {
+    const cell = Array.from(document.querySelectorAll('#dex-grid .dex-cell'))
+      .find(c => c.querySelector('.rframe.is-unowned'));
+    cell.scrollIntoView({ block: 'center' });
+    window.__unownedCell = cell.dataset.id;
+  });
+  await tapEl(page, `#dex-grid .dex-cell[data-id="${await page.evaluate(() => window.__unownedCell)}"]`);
   await sleep(200);
   eq('詳情面板開啟', await page.$eval('#dex-detail', e => e.hidden), false);
   ok('未擁有顯示名稱與敘述', await page.$eval('#dex-detail', e =>

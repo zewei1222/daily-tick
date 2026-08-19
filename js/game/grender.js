@@ -37,7 +37,7 @@
     A.$('#res-material').textContent = fmt(A.game.resources.material);
     A.$('#res-gold').textContent = fmt(A.game.resources.gold);
     var p = A.game.stage.pending;
-    A.$('#res-claim-dot').hidden = !(p.material > 0 || p.gold > 0);
+    A.$('#res-claim-btn').hidden = !(p.material > 0 || p.gold > 0);
   };
 
   /* ================= 對戰畫面 ================= */
@@ -196,14 +196,6 @@
       setBars('monster', m.base_stats.hp, m.base_stats.hp, 0);
     }
 
-    var cap = A.farm.pendingCap();
-    var host = A.$('#pending-nums');
-    host.textContent = '';
-    host.appendChild(img(A.gc.RES_SPRITES.material, 'px', '素材'));
-    host.appendChild(document.createTextNode(fmt(s.pending.material) + '/' + fmt(cap.material) + ' '));
-    host.appendChild(img(A.gc.RES_SPRITES.gold, 'px', '金幣'));
-    host.appendChild(document.createTextNode(fmt(s.pending.gold) + '/' + fmt(cap.gold)));
-
     var auto = A.$('#btn-auto');
     auto.textContent = '';
     if (s.auto_farming) {
@@ -217,6 +209,18 @@
     R.resources();
   };
 
+  /* L4 待領彈窗的數字 */
+  R.claimPop = function () {
+    var s = A.game.stage;
+    var cap = A.farm.pendingCap();
+    var host = A.$('#pending-nums');
+    host.textContent = '';
+    host.appendChild(img(A.gc.RES_SPRITES.material, 'px', '素材'));
+    host.appendChild(document.createTextNode(fmt(s.pending.material) + '/' + fmt(cap.material) + ' '));
+    host.appendChild(img(A.gc.RES_SPRITES.gold, 'px', '金幣'));
+    host.appendChild(document.createTextNode(fmt(s.pending.gold) + '/' + fmt(cap.gold)));
+  };
+
   /* ================= 抽卡 ================= */
   R.gacha = function () {
     var C = A.gc.CONST;
@@ -225,6 +229,32 @@
     A.$('#pity-rare-max').textContent = C.PITY_RARE;
     A.$('#pity-mythic').textContent = A.game.pulls.pity_mythic_counter;
     A.$('#pity-mythic-max').textContent = C.PITY_MYTHIC;
+    A.$('#pity-rare-fill').style.width =
+      Math.min(100, A.game.pulls.pity_rare_counter / C.PITY_RARE * 100) + '%';
+    A.$('#pity-mythic-fill').style.width =
+      Math.min(100, A.game.pulls.pity_mythic_counter / C.PITY_MYTHIC * 100) + '%';
+  };
+
+  /* 機率說明（L3 面板內容，由 tags/rarities 表產生） */
+  R.rateInfo = function () {
+    var C = A.gc.CONST;
+    /* 注意：RARITIES 在 A.gc 上，保底常數在 A.gc.CONST 上 */
+    var box = A.el('div');
+    box.appendChild(A.el('div', 'l3-title', '招募機率'));
+    var table = A.el('table', 'rate-table');
+    A.gc.RARITIES.forEach(function (r) {
+      var tr = A.el('tr');
+      var name = A.el('td');
+      name.appendChild(A.el('span', 'rar-' + r.id, r.name));
+      tr.appendChild(name);
+      tr.appendChild(A.el('td', null, r.weight + '%'));
+      table.appendChild(tr);
+    });
+    box.appendChild(table);
+    box.appendChild(A.el('p', 'hint',
+      '每 ' + C.PITY_RARE + ' 抽保底稀有以上；每 ' + C.PITY_MYTHIC +
+      ' 抽保底神話。重複抽中會提升該項目自己的等級上限（每次 +' + C.CAP_INCREMENT + '）。'));
+    return box;
   };
 
   R.showPulls = function (results) {
@@ -321,30 +351,53 @@
       main.appendChild(statTags(A.gc.statsAtLevel(it.base_stats, rec.current_level)));
       if (it.effect || it.passive) main.appendChild(A.el('div', 'item-desc', it.description));
       row.appendChild(main);
-
-      var acts = A.el('div', 'item-actions');
-      if (it.type !== 'character') {
-        var eqBtn = A.el('button', equipped ? 'btn-l3' : 'btn-l2', equipped ? '卸下' : '裝備');
-        eqBtn.type = 'button';
-        eqBtn.dataset.act = equipped ? 'unequip' : 'equip';
-        eqBtn.dataset.id = it.id;
-        acts.appendChild(eqBtn);
-      }
-      var cost = A.gacha.upgradeCost(it.id);
-      var upBtn = A.el('button', 'btn-l2');
-      upBtn.type = 'button';
-      upBtn.dataset.act = 'upgrade';
-      upBtn.dataset.id = it.id;
-      if (cost.capped) {
-        upBtn.textContent = 'MAX';
-        upBtn.disabled = true;
-      } else {
-        upBtn.textContent = '強化 ' + fmt(cost.material) + '/' + fmt(cost.gold);
-      }
-      acts.appendChild(upBtn);
-      row.appendChild(acts);
       host.appendChild(row);
     });
+  };
+
+  /* 背包項目的 L3 詳情面板內容（操作按鈕在這裡，§2.2） */
+  R.itemPanel = function (itemId) {
+    var it = A.gc.item(itemId);
+    var rec = A.game.items[itemId];
+    if (!it || !rec) return null;
+    var cap = A.gc.levelCap(rec.owned_count);
+    var equipped = A.gacha.isEquipped(itemId);
+
+    var box = A.el('div');
+    var head = A.el('div', 'l3-item-head');
+    head.appendChild(rframe(it, { equipped: equipped, ownedCount: rec.owned_count }));
+    var main = A.el('div', 'dd-main');
+    var name = A.el('div', 'item-name');
+    name.appendChild(A.el('span', 'rar-' + it.rarity, it.name));
+    name.appendChild(A.el('span', 'lv', 'Lv ' + rec.current_level + '/' + cap));
+    main.appendChild(name);
+    main.appendChild(statTags(A.gc.statsAtLevel(it.base_stats, rec.current_level)));
+    head.appendChild(main);
+    box.appendChild(head);
+    box.appendChild(A.el('p', 'item-desc', it.description));
+
+    var acts = A.el('div', 'l3-actions');
+    if (it.type !== 'character') {
+      var eqBtn = A.el('button', 'btn-l2', equipped ? '卸下' : '裝備');
+      eqBtn.type = 'button';
+      eqBtn.dataset.act = equipped ? 'unequip' : 'equip';
+      eqBtn.dataset.id = itemId;
+      acts.appendChild(eqBtn);
+    }
+    var cost = A.gacha.upgradeCost(itemId);
+    var upBtn = A.el('button', 'btn-l2');
+    upBtn.type = 'button';
+    upBtn.dataset.act = 'upgrade';
+    upBtn.dataset.id = itemId;
+    if (cost.capped) {
+      upBtn.textContent = 'MAX';
+      upBtn.disabled = true;
+    } else {
+      upBtn.textContent = '強化 ' + fmt(cost.material) + '/' + fmt(cost.gold);
+    }
+    acts.appendChild(upBtn);
+    box.appendChild(acts);
+    return box;
   };
 
   /* ================= 背包：圖鑑 ================= */

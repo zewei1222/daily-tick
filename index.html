@@ -7,7 +7,7 @@
 <meta name="description" content="極簡重複待辦清單與放置遊戲">
 <meta name="theme-color" content="#0B0A12">
 <!-- 版本標記：與 sw.js 的 CACHE_VERSION 同號，App 靠它判斷有沒有新版 -->
-<meta name="app-version" content="6">
+<meta name="app-version" content="7">
 <meta name="mobile-web-app-capable" content="yes">
 <meta name="apple-mobile-web-app-capable" content="yes">
 <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
@@ -32,7 +32,9 @@
   <span class="res-item is-gem"><img class="px" src="/daily-tick/assets/res_gem.png" alt="寶石"><span class="res-num" id="res-gems">0</span></span>
   <span class="res-item"><img class="px" src="/daily-tick/assets/res_material.png" alt="素材"><span class="res-num" id="res-material">0</span></span>
   <span class="res-item"><img class="px" src="/daily-tick/assets/res_gold.png" alt="金幣"><span class="res-num" id="res-gold">0</span></span>
-  <span class="res-claim-dot" id="res-claim-dot" hidden aria-label="有待領獎勵"></span>
+  <button class="res-claim" id="res-claim-btn" type="button" hidden aria-label="待領獎勵">
+    <span class="res-claim-dot"></span>
+  </button>
   <span class="res-spacer"></span>
   <button class="btn-l3" id="btn-edit" type="button">編輯</button>
   <button class="btn-icon" id="btn-settings" type="button" aria-label="設定">
@@ -42,7 +44,7 @@
 
 <main class="app-main">
 
-  <!-- ============ 對戰 ============ -->
+  <!-- ============ 對戰（L0：唯一主體＝戰鬥舞台） ============ -->
   <section class="view" id="view-battle" hidden>
     <div class="view-inner">
       <div class="stage-line">
@@ -50,7 +52,8 @@
         <span class="stage-max">最高 <span id="stage-max">0</span></span>
       </div>
 
-      <div class="battle-box">
+      <!-- 戰鬥舞台：單一 DOM 節點，手動挑戰時整塊搬進 L2，結束搬回 -->
+      <div class="battle-box" id="battle-stage">
         <div class="battle-units">
           <div class="unit is-player" id="unit-player">
             <div class="unit-traits" id="bu-player-traits"></div>
@@ -84,15 +87,41 @@
       <div class="battle-actions">
         <button class="btn-l2" id="btn-fight" type="button">挑戰此層</button>
         <button class="btn-l2" id="btn-auto" type="button">自動刷關</button>
-        <button class="btn-l3" id="btn-skip" type="button" hidden>跳過</button>
+      </div>
+    </div>
+  </section>
+
+  <!-- ============ 招募（L0：獨立分頁，儀式核心） ============ -->
+  <section class="view" id="view-gacha" hidden>
+    <div class="view-inner">
+      <div class="altar" id="altar">
+        <img class="px altar-gem" src="/daily-tick/assets/res_gem.png" alt="祭壇">
+        <div class="altar-gems"><span class="num" id="gacha-gems">0</span> 寶石</div>
       </div>
 
-      <div class="pending-box">
-        <span class="pending-nums" id="pending-nums"></span>
-        <button class="btn-l2" id="btn-claim" type="button">領取</button>
+      <div class="group">
+        <span class="group-title">保底進度</span>
+        <div class="pity-row">
+          <span>稀有</span>
+          <div class="pity-track"><div class="pity-fill" id="pity-rare-fill"></div></div>
+          <span class="num"><span id="pity-rare">0</span>/<span id="pity-rare-max">35</span></span>
+        </div>
+        <div class="pity-row">
+          <span>神話</span>
+          <div class="pity-track"><div class="pity-fill is-mythic" id="pity-mythic-fill"></div></div>
+          <span class="num"><span id="pity-mythic">0</span>/<span id="pity-mythic-max">200</span></span>
+        </div>
+        <div class="btn-row is-spaced">
+          <button class="btn-l3" id="btn-gacha-info" type="button">機率說明</button>
+        </div>
       </div>
 
-      <button class="btn-l1 gacha-entry" id="btn-gacha-open" type="button">招募（抽卡）</button>
+      <div class="battle-actions">
+        <button class="btn-l1" id="btn-pull-1" type="button">招募 ×1（5 寶石）</button>
+      </div>
+      <div class="battle-actions">
+        <button class="btn-l2" id="btn-pull-10" type="button">招募 ×10（50 寶石）</button>
+      </div>
     </div>
   </section>
 
@@ -137,27 +166,53 @@
     </div>
   </section>
 
-  <!-- ============ 統計 ============ -->
-  <section class="view" id="view-stats" hidden>
-    <div class="view-inner">
-      <div class="group" id="game-stats">
-        <span class="group-title">遊戲進度</span>
-        <div class="gstat-grid" id="gstat-grid"></div>
-      </div>
-      <div id="stats-body"></div>
-    </div>
-  </section>
-
 </main>
 
 <button class="fab" id="fab" type="button" aria-label="新增任務">＋</button>
 
 <nav class="tab-bar" role="tablist">
   <button class="tab" role="tab" data-tab="battle" aria-selected="false" type="button">對戰</button>
+  <button class="tab" role="tab" data-tab="gacha" aria-selected="false" type="button">招募</button>
   <button class="tab" role="tab" data-tab="bag" aria-selected="false" type="button">背包</button>
   <button class="tab" role="tab" data-tab="tasks" aria-selected="true" type="button">任務</button>
-  <button class="tab" role="tab" data-tab="stats" aria-selected="false" type="button">統計</button>
 </nav>
+
+<!-- ============ L2：全螢幕事件（硬切，HUD 完全被接管） ============ -->
+<div class="l2" id="l2-battle" hidden>
+  <div class="l2-inner">
+    <div class="stage-line">
+      <span>第 <span class="stage-now" id="l2-stage-now">1</span> 層</span>
+    </div>
+    <div id="l2-stage-slot"></div>
+    <div class="battle-actions l2-actions">
+      <button class="btn-l3" id="btn-skip" type="button">跳過</button>
+      <button class="btn-l2" id="btn-fight-again" type="button" hidden>再挑戰</button>
+      <button class="btn-l2" id="btn-l2-battle-exit" type="button" hidden>返回</button>
+    </div>
+  </div>
+</div>
+
+<div class="l2" id="l2-gacha" hidden>
+  <div class="l2-inner">
+    <div class="stage-line"><span>招募結果</span></div>
+    <div class="pull-result" id="pull-result"></div>
+    <div class="battle-actions l2-actions">
+      <button class="btn-l2" id="btn-l2-gacha-exit" type="button">知道了</button>
+    </div>
+  </div>
+</div>
+
+<!-- ============ L3：模態面板（底部升起 + 遮罩） ============ -->
+<div class="l3" id="l3" hidden>
+  <div class="l3-mask" id="l3-mask"></div>
+  <div class="l3-panel"><div class="l3-content" id="l3-content"></div></div>
+</div>
+
+<!-- ============ L4：待領彈窗 ============ -->
+<div class="l4-claim" id="claim-pop" hidden>
+  <span class="pending-nums" id="pending-nums"></span>
+  <button class="btn-l2" id="btn-claim" type="button">領取</button>
+</div>
 
 <!-- 新增 / 編輯任務 -->
 <div class="sheet is-fade" id="sheet-task" hidden role="dialog" aria-modal="true">
@@ -232,35 +287,6 @@
   </div>
 </div>
 
-<!-- 抽卡 -->
-<div class="sheet" id="sheet-gacha" hidden role="dialog" aria-modal="true">
-  <div class="sheet-head">
-    <button class="btn-l3" data-act="close" type="button">返回</button>
-    <span class="sheet-title">招募</span>
-    <span></span>
-  </div>
-  <div class="sheet-body">
-    <div class="sheet-inner">
-      <div class="group">
-        <span class="group-title" id="gacha-pool-name">通用招募</span>
-        <p class="status-line"><img class="px" src="/daily-tick/assets/res_gem.png" alt="寶石"
-           width="32" height="32"><span class="status-value num" id="gacha-gems"
-          >0</span></p>
-        <div class="pity-line">
-          <span>稀有保底 <span id="pity-rare">0</span>/<span id="pity-rare-max">35</span></span>
-          <span>神話保底 <span id="pity-mythic">0</span>/<span id="pity-mythic-max">200</span></span>
-        </div>
-        <div class="btn-row is-spaced">
-          <button class="btn-l2" id="btn-pull-1" type="button">單抽 ×5</button>
-          <button class="btn-l2" id="btn-pull-10" type="button">十連 ×50</button>
-        </div>
-        <p class="hint">稀有以上 5%（稀有 4.5%、神話 0.5%）。重複抽中會提升該項目的等級上限。</p>
-      </div>
-      <div class="pull-result" id="pull-result"></div>
-    </div>
-  </div>
-</div>
-
 <!-- 設定 -->
 <div class="sheet" id="sheet-settings" hidden role="dialog" aria-modal="true">
   <div class="sheet-head">
@@ -270,6 +296,16 @@
   </div>
   <div class="sheet-body">
     <div class="sheet-inner">
+
+      <div class="group" id="game-stats">
+        <span class="group-title">統計 — 遊戲進度</span>
+        <div class="gstat-grid" id="gstat-grid"></div>
+      </div>
+
+      <div class="group">
+        <span class="group-title">統計 — 日常任務</span>
+        <div id="stats-body"></div>
+      </div>
 
       <div class="group">
         <span class="group-title">每日重置時間</span>

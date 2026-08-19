@@ -462,9 +462,9 @@ group('註釋 / 日程 / 週期（新功能）');
   ok('一般任務沒有週期欄位',
      await page.evaluate(() => App.state.tasks.find(t => t.title === '一般的').repeat === undefined));
 
-  /* 統計：週期與三態格子 */
-  await tapEl(page, '.tab[data-tab="stats"]');
-  await sleep(250);
+  /* 統計：已移入齒輪選單（GAME_FEEL §2.1）*/
+  await tapEl(page, '#btn-settings');
+  await sleep(300);
   const stats = await page.evaluate(() => ({
     meta: Array.from(document.querySelectorAll('.stat-item')[0].querySelectorAll('.stat-meta span'))
             .map(s => s.textContent),
@@ -534,20 +534,18 @@ group('軟刪除：SOFT_DELETE_TASK.md 的 16 項驗收');
   ok('[2] deleted_at 有值', gone && /^\d{4}-\d{2}-\d{2}T/.test(gone.deleted_at), gone && gone.deleted_at);
   eq('[2] history 完整保留（38 筆）', gone.history.length, 38);
 
-  /* 3. 統計頁不出現，其他任務數字未受影響 */
-  await tapEl(page, '.tab[data-tab="stats"]');
+  /* 3. 統計（設定頁內）不出現，其他任務數字未受影響 */
+  await tapEl(page, '#btn-settings');
   await sleep(300);
   const statNames = await page.$$eval('.stat-name', ns => ns.map(n => n.textContent));
-  eq('[3] 統計頁不出現已刪除任務（依 order_index 排）', statNames, ['喝水', '拉筋']);
+  eq('[3] 統計不出現已刪除任務（依 order_index 排）', statNames, ['喝水', '拉筋']);
   const after = await page.evaluate(() => {
     const t = App.state.tasks.find(x => x.title === '喝水');
     return { streak: App.streak(t), longest: App.longestStreak(t), total: t.history.length };
   });
   eq('[3] 其他任務的統計數字未受影響', after, before);
-  await tapEl(page, '.tab[data-tab="tasks"]');
-  await sleep(250);
-  await tapEl(page, '#seg-tasks button[data-pane="daily"]');
-  await sleep(250);
+  await tapEl(page, '#sheet-settings [data-act="close"]');
+  await sleep(300);
 
   /* 4. 設定頁「已刪除的任務」顯示正確的刪除日期與紀錄次數 */
   await openSettings();
@@ -687,14 +685,12 @@ group('軟刪除：SOFT_DELETE_TASK.md 的 16 項驗收');
   await sleep(250);
   eq('[11] 日常分頁也是空狀態', await page.$eval('#empty-daily',
      e => e.hidden ? null : e.textContent), '還沒有日常任務。按右下角的 ＋ 新增。');
-  eq('[11] 統計頁不顯示已刪除任務', await (async () => {
-    await tapEl(page, '.tab[data-tab="stats"]'); await sleep(250);
-    return page.$$eval('.stat-name', ns => ns.map(n => n.textContent));
+  eq('[11] 統計（設定頁內）不顯示已刪除任務', await (async () => {
+    await tapEl(page, '#btn-settings'); await sleep(300);
+    const names = await page.$$eval('.stat-name', ns => ns.map(n => n.textContent));
+    await tapEl(page, '#sheet-settings [data-act="close"]'); await sleep(300);
+    return names;
   })(), []);
-  await tapEl(page, '.tab[data-tab="tasks"]');
-  await sleep(250);
-  await tapEl(page, '#seg-tasks button[data-pane="daily"]');
-  await sleep(250);
 
   /* 15. 強制關閉重開（以 IndexedDB 落地 + 重新導覽驗證） */
   const idbState = await page.evaluate(async () => {
@@ -1016,23 +1012,41 @@ group('遊戲層：抽卡 / 背包 / 圖鑑 / 對戰');
   });
   eq('資源列顯示 500', await page.$eval('#res-gems', e => e.textContent), '500');
 
-  /* 對戰 tab */
+  /* 對戰 tab：手動挑戰 → L2 全螢幕（GAME_FEEL §1.1/§3.1） */
   await tapEl(page, '.tab[data-tab="battle"]');
   await sleep(250);
   eq('顯示目前層數', await page.$eval('#stage-now', e => e.textContent), '1');
+  ok('對戰頁已無待領盒與抽卡入口（§2.2 唯一主體）', await page.evaluate(() =>
+     !document.querySelector('#view-battle .pending-box') &&
+     !document.querySelector('#view-battle .btn-l1')));
   await page.evaluate(() => { App.grender.playResult = (r, o) => { if (o && o.done) o.done(); }; });
   await tapEl(page, '#btn-fight');
-  await sleep(400);
+  await sleep(300);
+  eq('挑戰進入 L2 全螢幕', await page.$eval('#l2-battle', e => e.hidden), false);
+  ok('戰鬥舞台被搬進 L2', await page.evaluate(() =>
+     document.querySelector('#l2-stage-slot #battle-stage') !== null));
+  eq('戰鬥結束顯示返回鍵（不自動退出）',
+     await page.$eval('#btn-l2-battle-exit', e => e.hidden), false);
+  await tapEl(page, '#btn-l2-battle-exit');
+  await sleep(250);
+  eq('返回後 L2 關閉', await page.$eval('#l2-battle', e => e.hidden), true);
+  ok('舞台歸位 L0', await page.evaluate(() =>
+     document.querySelector('#view-battle #battle-stage') !== null));
   eq('初始配置打贏第 1 層 → 自動進第 2 層', await page.$eval('#stage-now', e => e.textContent), '2');
   eq('最高層數更新', await page.$eval('#stage-max', e => e.textContent), '1');
   ok('待領池有掉落', await page.evaluate(() =>
      App.game.stage.pending.material > 0 && App.game.stage.pending.gold > 0));
-  eq('資源列出現待領提示點', await page.$eval('#res-claim-dot', e => e.hidden), false);
+  eq('資源列出現待領角標（GAME_FEEL §2.2）', await page.$eval('#res-claim-btn', e => e.hidden), false);
+  await tapEl(page, '#res-claim-btn');
+  await sleep(200);
+  eq('點角標開 L4 彈窗', await page.$eval('#claim-pop', e => e.hidden), false);
+  ok('彈窗顯示待領數字', await page.$eval('#pending-nums', e => e.textContent.length > 0));
   await tapEl(page, '#btn-claim');
   await sleep(300);
   ok('領取後入袋', await page.evaluate(() =>
      App.game.resources.material > 0 && App.game.resources.gold > 0));
-  eq('領取後提示點消失', await page.$eval('#res-claim-dot', e => e.hidden), true);
+  eq('領取後彈窗關閉', await page.$eval('#claim-pop', e => e.hidden), true);
+  eq('領取後角標消失', await page.$eval('#res-claim-btn', e => e.hidden), true);
 
   /* 自動刷關開關 */
   await tapEl(page, '#btn-auto');
@@ -1042,23 +1056,41 @@ group('遊戲層：抽卡 / 背包 / 圖鑑 / 對戰');
   await sleep(150);
   eq('自動刷關關閉', await page.evaluate(() => App.game.stage.auto_farming), false);
 
-  /* 抽卡 */
-  await tapEl(page, '#btn-gacha-open');
+  /* 抽卡：獨立「招募」分頁（GAME_FEEL §2.1） */
+  await tapEl(page, '.tab[data-tab="gacha"]');
   await sleep(300);
-  eq('抽卡面板顯示餘額', await page.$eval('#gacha-gems', e => e.textContent), '500');
+  eq('招募分頁顯示餘額', await page.$eval('#gacha-gems', e => e.textContent), '500');
+  eq('招募分頁有保底進度條', await page.$$eval('.pity-track', ts => ts.length), 2);
   await page.evaluate(() => { App.gacha.rng = () => 0.0; });   /* 固定抽 common 第一件 */
   await tapEl(page, '#btn-pull-1');
-  await sleep(300);
+  await sleep(200);
+  eq('抽卡結果進入 L2 全螢幕（§1.1）', await page.$eval('#l2-gacha', e => e.hidden), false);
   eq('顯示一張結果卡', await page.$$eval('#pull-result .pull-card', cs => cs.length), 1);
+  ok('L2 蓋住 HUD（資源列與 Tab 被接管）', await page.evaluate(() => {
+    const l2 = document.querySelector('#l2-gacha').getBoundingClientRect();
+    return l2.top === 0 && l2.height === window.innerHeight;
+  }));
+  await tapEl(page, '#btn-l2-gacha-exit');
+  await sleep(200);
+  eq('「知道了」關閉 L2', await page.$eval('#l2-gacha', e => e.hidden), true);
   ok('寶石扣 5', (await page.$eval('#gacha-gems', e => e.textContent)) === '495');
   await tapEl(page, '#btn-pull-10');
-  await sleep(400);
+  await sleep(300);
   eq('十連顯示 10 張', await page.$$eval('#pull-result .pull-card', cs => cs.length), 10);
   ok('重複抽中顯示上限提升', await page.$$eval('#pull-result .pull-card .pc-tag',
      ts => ts.some(t => t.textContent.indexOf('cap ') >= 0)));
+  await tapEl(page, '#btn-l2-gacha-exit');
+  await sleep(200);
   eq('保底計數器顯示', await page.$eval('#pity-rare', e => e.textContent), '11');
-  await tapEl(page, '#sheet-gacha [data-act="close"]');
-  await sleep(300);
+  ok('機率說明開 L3 面板', await (async () => {
+    await tapEl(page, '#btn-gacha-info');
+    await sleep(250);
+    const open = await page.$eval('#l3', e => !e.hidden);
+    const rows = await page.$$eval('.rate-table tr', rs => rs.length);
+    await tapEl(page, '#l3-mask');
+    await sleep(250);
+    return open && rows === 4;
+  })());
 
   /* 背包：擁有 */
   await tapEl(page, '.tab[data-tab="bag"]');
@@ -1077,19 +1109,34 @@ group('遊戲層：抽卡 / 背包 / 圖鑑 / 對戰');
   }));
   ok('每個擁有項目套稀有度框', await page.evaluate(() =>
      document.querySelectorAll('#pane-owned .item-row .rframe').length >= 3));
-  /* 強化（先確保資源足夠：Lv1 → 2 需 🔧5 🪙20） */
+  /* 強化：操作移入 L3 面板（GAME_FEEL §2.2）。先確保資源足夠（Lv1→2 需 5/20） */
   await page.evaluate(() => {
     App.game.resources.material += 100; App.game.resources.gold += 100;
     App.grender.owned(); App.grender.resources();
   });
   const lvBefore = await page.evaluate(() => App.game.items.char_001.current_level);
   const resBefore = await page.evaluate(() => ({ ...App.game.resources }));
-  await tapEl(page, '#pane-owned .item-row[data-id="char_001"] [data-act="upgrade"]');
+  ok('項目列已無行內按鈕', await page.evaluate(() =>
+     !document.querySelector('#pane-owned .item-row button')));
+  await tapEl(page, '#pane-owned .item-row[data-id="char_001"]');
+  await sleep(300);
+  eq('點項目開 L3 詳情面板', await page.$eval('#l3', e => !e.hidden), true);
+  ok('L3 面板從底部升起且有遮罩', await page.evaluate(() => {
+    const mask = getComputedStyle(document.querySelector('#l3-mask')).backgroundColor;
+    return document.querySelector('#l3').classList.contains('is-open') &&
+           mask.indexOf('rgba(11, 10, 18') === 0;
+  }));
+  await tapEl(page, '#l3-content [data-act="upgrade"]');
   await sleep(300);
   eq('強化 +1 級', await page.evaluate(() => App.game.items.char_001.current_level), lvBefore + 1);
-  eq('強化扣資源 🔧5 🪙20', await page.evaluate(() =>
+  eq('強化扣資源 5/20', await page.evaluate(() =>
      [App.game.resources.material, App.game.resources.gold]),
      [resBefore.material - 5, resBefore.gold - 20]);
+  ok('面板即時反映新等級', await page.$eval('#l3-content .lv',
+     e => e.textContent.indexOf('Lv ' + (2)) === 0 || e.textContent.includes('2/')));
+  await tapEl(page, '#l3-mask');
+  await sleep(250);
+  eq('點遮罩關閉 L3', await page.$eval('#l3', e => e.hidden), true);
 
   /* 圖鑑 */
   await tapEl(page, '#seg-bag button[data-pane="dex"]');
@@ -1137,10 +1184,12 @@ group('遊戲層：抽卡 / 背包 / 圖鑑 / 對戰');
   ok('圖鑑不顯示等級資訊', await page.$eval('#dex-detail', e =>
      e.textContent.indexOf('Lv') < 0));
 
-  /* 統計 tab 遊戲區塊 */
-  await tapEl(page, '.tab[data-tab="stats"]');
+  /* 統計：設定頁內的遊戲區塊 */
+  await tapEl(page, '#btn-settings');
+  await sleep(300);
+  ok('遊戲進度統計顯示於設定頁', await page.$$eval('#gstat-grid .gstat-item', gs => gs.length === 4));
+  await tapEl(page, '#sheet-settings [data-act="close"]');
   await sleep(250);
-  ok('遊戲進度統計顯示', await page.$$eval('#gstat-grid .gstat-item', gs => gs.length === 4));
   await ctx.close();
 }
 

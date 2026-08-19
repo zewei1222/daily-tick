@@ -232,7 +232,7 @@
   /* 預設啟動於「任務」tab（GAME_SPEC §4b.3：設計立場——工具不被遊戲劫持） */
   A.defaultUi = function () {
     return { tab: 'tasks', taskPane: 'daily', bagPane: 'owned',
-             scroll: { battle: 0, bag: 0, tasks: 0, stats: 0 } };
+             scroll: { battle: 0, gacha: 0, bag: 0, tasks: 0 } };
   };
 
   A.readUiState = function () {

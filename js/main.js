@@ -33,10 +33,9 @@
     if (u.tab === 'daily' || u.tab === 'general') {
       u.taskPane = u.tab;
       u.tab = 'tasks';
-    } else if (u.tab === 'stats') {
-      u.tab = 'stats';
     }
-    if (['battle', 'bag', 'tasks', 'stats'].indexOf(u.tab) < 0) u.tab = 'tasks';
+    if (u.tab === 'stats') u.tab = 'tasks';           /* 統計已移入齒輪選單（GAME_FEEL §2.1） */
+    if (['battle', 'gacha', 'bag', 'tasks'].indexOf(u.tab) < 0) u.tab = 'tasks';
     if (u.taskPane !== 'general') u.taskPane = 'daily';
     if (u.bagPane !== 'dex') u.bagPane = 'owned';
     u.scroll = u.scroll || {};
@@ -47,11 +46,10 @@
     if (tab === 'tasks') {
       A.render.list('daily', opts || { animate: false });
       A.render.list('general', opts || { animate: false });
-    } else if (tab === 'stats') {
-      A.render.stats();
-      A.grender.gameStats();
     } else if (tab === 'battle') {
       A.grender.battle();
+    } else if (tab === 'gacha') {
+      A.grender.gacha();
     } else if (tab === 'bag') {
       if (ui.bagPane === 'dex') A.grender.dex();
       else A.grender.owned();
@@ -92,6 +90,46 @@
     A.$('#pane-dex').hidden = pane !== 'dex';
     renderTab('bag');
     saveUi();
+  }
+
+  /* ================= 圖層控制（GAME_FEEL_SPEC §1） =================
+     L2：全螢幕事件。硬切（無過場），開啟時畫面 100% 被接管（覆蓋 HUD），
+     只能以明確的返回鍵離開。 */
+  function openL2(id) {
+    A.grender.stopReplay(true);
+    A.$('#' + id).hidden = false;
+  }
+  function closeL2(id) {
+    A.$('#' + id).hidden = true;
+  }
+
+  /* L3：模態面板，底部升起 160ms + 遮罩（點遮罩即關） */
+  function openL3(contentEl) {
+    var l3 = A.$('#l3');
+    var host = A.$('#l3-content');
+    host.textContent = '';
+    if (contentEl) host.appendChild(contentEl);
+    l3.hidden = false;
+    void l3.offsetHeight;
+    l3.classList.add('is-open');
+  }
+  function closeL3() {
+    var l3 = A.$('#l3');
+    l3.classList.remove('is-open');
+    setTimeout(function () { l3.hidden = true; }, A.reducedMotion() ? 0 : 160);
+  }
+  A.openL3 = openL3;
+  A.closeL3 = closeL3;
+
+  /* L4：待領彈窗。不阻塞，數秒後自動收 */
+  var claimPopTimer = null;
+  function toggleClaimPop(show) {
+    var pop = A.$('#claim-pop');
+    if (claimPopTimer) { clearTimeout(claimPopTimer); claimPopTimer = null; }
+    if (!show) { pop.hidden = true; return; }
+    A.grender.claimPop();
+    pop.hidden = false;
+    claimPopTimer = setTimeout(function () { pop.hidden = true; }, 5000);
   }
 
   /* ================= 編輯模式 ================= */
@@ -257,7 +295,6 @@
         A.toast('已新增，下次到期 ' + A.nextDueAfter(nt, A.logicalToday()));
       }
     }
-    if (A.tab === 'stats') A.render.stats();
     A.save();
     closeSheet(A.$('#sheet-task'));
     editingId = null;
@@ -283,6 +320,9 @@
     A.$('#ta-export').value = JSON.stringify(A.state, null, 2);
     A.$('#ta-import').value = '';
     renderDeletedList();
+    /* 統計已移入齒輪選單（GAME_FEEL §2.1） */
+    A.render.stats();
+    A.grender.gameStats();
     A.$('#about-line').textContent = '版本 ' + (A.version || '?') +
       ' ・ schema v' + A.SCHEMA_VERSION +
       (A.sync.gistId() ? ' ・ gist ' + A.sync.gistId().slice(0, 8) : '');
@@ -344,8 +384,7 @@
       if (!t) return;
       A.save();
       A.render.list(t.type, { animate: true });
-      if (A.tab === 'stats') A.render.stats();
-      renderDeletedList();
+        renderDeletedList();
       A.toast('已還原「' + t.title + '」');
       return;
     }
@@ -435,7 +474,6 @@
     if (d === lastLogical) return;
     lastLogical = d;
     A.render.list('daily', { animate: true });
-    if (A.tab === 'stats') A.render.stats();
   }
 
   /* ================= 可視區域與鍵盤（SPEC §7.5） =================
@@ -603,43 +641,82 @@
       setMode(A.mode === 'edit' ? 'normal' : 'edit');
     });
 
-    /* ---------- 對戰 ---------- */
-    A.$('#btn-fight').addEventListener('click', function () {
+    /* ---------- 對戰（手動挑戰 → L2 全螢幕，GAME_FEEL §1.1/§3.1） ---------- */
+    var stageHome = A.$('#battle-stage').parentNode;   /* 舞台在 L0 的原位 */
+
+    function enterBattleL2() {
+      A.$('#l2-stage-slot').appendChild(A.$('#battle-stage'));   /* 舞台整塊搬進 L2 */
+      A.$('#l2-stage-now').textContent = A.game.stage.current_stage;
+      A.$('#btn-skip').hidden = false;
+      A.$('#btn-fight-again').hidden = true;
+      A.$('#btn-l2-battle-exit').hidden = true;
+      openL2('l2-battle');
+    }
+
+    function battleFinished() {
+      A.$('#btn-skip').hidden = true;
+      A.$('#btn-fight-again').hidden = false;
+      A.$('#btn-l2-battle-exit').hidden = false;
+      A.$('#l2-stage-now').textContent = A.game.stage.current_stage;
+      A.grender.resources();
+    }
+
+    function runManualBattle() {
       var result = A.farm.battleOnce(null, { manual: true });
-      A.grender.playResult(result, { done: function () { A.grender.battle(); } });
-      A.grender.battle();
+      A.grender.playResult(result, { done: battleFinished });
+    }
+
+    A.$('#btn-fight').addEventListener('click', function () {
+      enterBattleL2();
+      runManualBattle();
     });
-    A.$('#btn-auto').addEventListener('click', function () {
-      A.farm.setAuto(!A.game.stage.auto_farming);
+    A.$('#btn-fight-again').addEventListener('click', function () {
+      A.$('#btn-fight-again').hidden = true;
+      A.$('#btn-l2-battle-exit').hidden = true;
+      A.$('#btn-skip').hidden = false;
+      A.$('#l2-stage-now').textContent = A.game.stage.current_stage;
+      runManualBattle();
     });
     A.$('#btn-skip').addEventListener('click', function () {
       A.grender.stopReplay(true);
+      battleFinished();
+    });
+    A.$('#btn-l2-battle-exit').addEventListener('click', function () {
+      A.grender.stopReplay(true);
+      stageHome.appendChild(A.$('#battle-stage'));               /* 舞台歸位 */
+      closeL2('l2-battle');
       A.grender.battle();
+    });
+
+    A.$('#btn-auto').addEventListener('click', function () {
+      A.farm.setAuto(!A.game.stage.auto_farming);
+    });
+
+    /* 待領：資源列角標 → L4 彈窗（GAME_FEEL §2.2） */
+    A.$('#res-claim-btn').addEventListener('click', function () {
+      toggleClaimPop(A.$('#claim-pop').hidden);
     });
     A.$('#btn-claim').addEventListener('click', function () {
       var got = A.farm.claim();
+      toggleClaimPop(false);
       if (!got) { A.toast('目前沒有待領的獎勵'); return; }
-      A.grender.battle();
-      A.toast('領取 🔧' + A.gc.fmt(got.material) + '　🪙' + A.gc.fmt(got.gold));
+      A.grender.resources();
+      if (A.tab === 'battle') A.grender.battle();
+      A.toast('領取 ' + A.gc.fmt(got.material) + ' 素材、' + A.gc.fmt(got.gold) + ' 金幣');
     });
+
     A.farm.onChange = function () {
       if (A.tab === 'battle') A.grender.battle();
       else A.grender.resources();
     };
     A.farm.onBattle = function (result) {
-      if (A.tab === 'battle') A.grender.playResult(result, { instant: true });
+      /* 自動刷關不進 L2：只在 L0 舞台上即時更新結果（GAME_FEEL §3.3 的結構面） */
+      if (A.tab === 'battle' && A.$('#l2-battle').hidden) {
+        A.grender.playResult(result, { instant: true });
+      }
     };
 
-    /* ---------- 抽卡 ---------- */
-    var gachaSheet = A.$('#sheet-gacha');
-    A.$('#btn-gacha-open').addEventListener('click', function () {
-      A.grender.gacha();
-      A.$('#pull-result').textContent = '';
-      openSheet(gachaSheet);
-    });
-    gachaSheet.addEventListener('click', function (e) {
-      if (e.target.dataset && e.target.dataset.act === 'close') closeSheet(gachaSheet);
-    });
+    /* ---------- 招募（獨立分頁；結果 → L2，GAME_FEEL §2.1） ---------- */
     function doPulls(n) {
       var results = [];
       for (var i = 0; i < n; i++) {
@@ -649,15 +726,33 @@
       }
       if (results.length) {
         A.grender.showPulls(results);
+        openL2('l2-gacha');
         A.grender.gacha();
         A.grender.resources();
       }
     }
     A.$('#btn-pull-1').addEventListener('click', function () { doPulls(1); });
     A.$('#btn-pull-10').addEventListener('click', function () { doPulls(10); });
+    A.$('#btn-l2-gacha-exit').addEventListener('click', function () {
+      closeL2('l2-gacha');
+      A.grender.gacha();
+    });
+    A.$('#btn-gacha-info').addEventListener('click', function () {
+      openL3(A.grender.rateInfo());
+    });
 
-    /* ---------- 背包 ---------- */
+    /* ---------- L3 通用 ---------- */
+    A.$('#l3-mask').addEventListener('click', closeL3);
+
+    /* ---------- 背包（操作移入 L3 面板，GAME_FEEL §2.2） ---------- */
     A.$('#pane-owned').addEventListener('click', function (e) {
+      var row = e.target.closest('.item-row');
+      if (!row) return;
+      var panel = A.grender.itemPanel(row.dataset.id);
+      if (panel) openL3(panel);
+    });
+
+    A.$('#l3-content').addEventListener('click', function (e) {
       var btn = e.target.closest('button[data-act]');
       if (!btn || btn.disabled) return;
       var id = btn.dataset.id;
@@ -669,8 +764,15 @@
         if (r && r.level) A.toast('強化成功　Lv ' + r.level + '/' + r.cap);
       }
       if (r && r.error) { A.toast(r.error); return; }
-      A.grender.owned();
       A.grender.resources();
+      if (A.tab === 'bag') A.grender.owned();
+      /* 面板內容重建以反映新狀態 */
+      var panel = A.grender.itemPanel(id);
+      if (panel) {
+        var host = A.$('#l3-content');
+        host.textContent = '';
+        host.appendChild(panel);
+      }
     });
 
     A.$('#pane-dex').addEventListener('click', function (e) {

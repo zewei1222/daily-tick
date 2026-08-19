@@ -166,7 +166,6 @@
       if (A.grender) A.grender.resources();
     }
     A.render.list(task.type, { animate: true });
-    if (A.tab === 'stats') A.render.stats();
     A.save();
   }
 
@@ -182,7 +181,6 @@
     G.closeOpen(false);
     A.softDeleteTask(id);
     A.render.list(type, { animate: true });
-    if (A.tab === 'stats') A.render.stats();
     A.save();
   }
 

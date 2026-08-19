@@ -12,8 +12,8 @@
       fab:       A.$('#fab'),
       lists:     { daily: A.$('#list-daily'), general: A.$('#list-general') },
       empties:   { daily: A.$('#empty-daily'), general: A.$('#empty-general') },
-      views:     { battle: A.$('#view-battle'), bag: A.$('#view-bag'),
-                   tasks: A.$('#view-tasks'), stats: A.$('#view-stats') },
+      views:     { battle: A.$('#view-battle'), gacha: A.$('#view-gacha'),
+                   bag: A.$('#view-bag'), tasks: A.$('#view-tasks') },
       panes:     { daily: A.$('#pane-daily'), general: A.$('#pane-general') },
       footGeneral: A.$('#foot-general'),
       stats:     A.$('#stats-body'),
@@ -249,7 +249,6 @@
     R.chrome();
     R.list('daily', opts);
     R.list('general', opts);
-    if (A.tab === 'stats') R.stats();
   };
 
 })(typeof globalThis !== 'undefined'
